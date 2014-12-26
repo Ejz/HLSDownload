@@ -1,0 +1,26 @@
+{
+    "name": "ejz/hls-downloader",
+    "description": "Recursive HTTP Live Streaming Downloader!",
+    "keywords": ["ejz", "http", "live", "streaming", "downloader", "php"],
+    "license": "WTFPL",
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/Ejz/HLSDownloader"
+        }
+    ],
+    "authors": [
+        {
+            "name": "Ejz",
+            "email": "ejz@ya.ru",
+            "homepage": "http://ejz.ru/"
+        }
+    ],
+    "require": {
+        "php": ">=5.3.0",
+        "ejz/core": "~1.0"
+    },
+    "autoload": {
+        "psr-4": {"Ejz\\": "src/Ejz"}
+    }
+}
