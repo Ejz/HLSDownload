@@ -10,7 +10,7 @@ class HLSDownloader {
             $name = file_get_name($url);
             $ext = $ext ? ('.' . $ext) : '';
             if(!$name) return false;
-            $target = "{path}/{$name}{$ext}";
+            $target = "{$path}/{$name}{$ext}";
         } else $target = "{$path}/{$target}";
         trigger_error("Save '{$url}' --> '{$target}'", E_USER_NOTICE);
         $content = curl($url, array(
