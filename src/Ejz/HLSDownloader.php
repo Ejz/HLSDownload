@@ -12,7 +12,7 @@ class HLSDownloader {
             if(!$name) return false;
             $target = "{$path}/{$name}{$ext}";
         } else $target = "{$path}/{$target}";
-        trigger_error("Save '{$url}' --> '{$target}'", E_USER_NOTICE);
+        // trigger_error("Save '{$url}' --> '{$target}'", E_USER_NOTICE);
         $content = curl($url, array(
             CURLOPT_CONNECTTIMEOUT => 0,
             CURLOPT_TIMEOUT => 400
