@@ -31,21 +31,12 @@ class HLSDownloader {
                 $replaceFrom[] = $line;
                 $replaceTo[] = $_line;
             }
-            // if(is_numeric(strpos($line, '/'))) { // "one/two/link.m3u8"
-            //     preg_match('~^(.*)/([^/]*?)$~', $line, $match);
-            //     $append = $match[1]; // "one/two"
-            //     $line = $match[2];
-            //     $_prefix = $prefix . $append . '/';
-            // } else {
-            //     $_prefix = $prefix;
-            //     $append = '';
-            // }
             self::go(dirname($url) . '/' . $line, $path, $_line);
         }
         if($replaceFrom and $replaceTo) {
             $content = str_replace($replaceFrom, $replaceTo, $content);
             file_put_contents($target, $content);
         }
-        return true;
+        return $path;
     }
 }
