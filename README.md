@@ -26,6 +26,12 @@ Now install dependencies:
 $ php composer.phar install
 ```
 
+Let's test on an HLS file:
+
+```php
+
+```
+
 ### CI: Codeship
 
 [![Codeship Status for Ejz/HLSDownloader](https://codeship.com/projects/bcd7db20-6abb-0132-5494-2e0b75730361/status)](https://codeship.com/projects/53779)
