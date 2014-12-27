@@ -67,7 +67,7 @@ trailer.m3u8
 
 ### CI: Codeship
 
-[![Codeship Status for Ejz/HLSDownloader](https://codeship.com/projects/bcd7db20-6abb-0132-5494-2e0b75730361/status)](https://codeship.com/projects/53779)
+[![Codeship Status for Ejz/HLSDownloader](https://codeship.com/projects/bcd7db20-6abb-0132-5494-2e0b75730361/status)](https://codeship.com/projects/54502)
 
 ### CI: Travis
 
