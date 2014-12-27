@@ -39,6 +39,8 @@ $path = HLSDownloader::go("http://ejz.ru/hls/hls-flat/trailer.m3u8");
 foreach(scandir($path) as $file) echo $file, chr(10);
 ```
 
+Will output:
+
 ```
 .
 ..
