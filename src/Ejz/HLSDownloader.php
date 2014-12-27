@@ -27,7 +27,7 @@ class HLSDownloader {
             if(strpos($line, '#') === 0) continue;
             if(host($line)) return false; // TODO: HANDLE THIS CASE
             $_line = str_replace('/', '-', $line);
-            $_line = preg_replace('/[\.-]+/', '', $_line);
+            $_line = preg_replace('/[\.-]{2,}/', '', $_line);
             if($_line != $line) {
                 $replaceFrom[] = $line;
                 $replaceTo[] = $_line;
