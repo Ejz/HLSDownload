@@ -43,6 +43,7 @@ foreach(scandir($path) as $file) echo $file, chr(10);
 Will output:
 
 ```
+/tmp/tmp.oVCbca8212
 .
 ..
 1280x7201.ts
