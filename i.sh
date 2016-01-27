@@ -3,7 +3,7 @@
 NAME="hls-downloader"
 TTT=$(mktemp -d) && cd "${TTT}"
 curl -sS 'https://getcomposer.org/installer' | php
-php composer.phar "require ejz/${NAME}:~1.0"
+php composer.phar require "ejz/${NAME}:~1.0"
 cd "vendor/ejz/${NAME}/"
 curl -sS 'https://getcomposer.org/installer' | php
 php composer.phar install
