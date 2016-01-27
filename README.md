@@ -2,28 +2,21 @@
 
 Recursive HTTP Live Streaming Downloader!
 
-### Quick start
+### Quick start (CLI)
+
+```bash
+$ curl -sSL 'https://raw.githubusercontent.com/Ejz/HLSDownloader/master/i.sh' | sudo bash
+$ hls-downloader-cli "http://ejz.ru/hls/hls-flat/trailer.m3u8"
+/tmp/tmp.jYqtLR4pVQ
+$ find /tmp/tmp.jYqtLR4pVQ -type f
+```
+
+### Quick start (PHP)
 
 ```bash
 $ mkdir myproject && cd myproject
 $ curl -sS 'https://getcomposer.org/installer' | php
-$ nano -w composer.json
-```
-
-Insert following code:
-
-```javascript
-{
-    "require": {
-        "ejz/hls-downloader": "~1.0"
-    }
-}
-```
-
-Now install dependencies:
-
-```bash
-$ php composer.phar install
+$ php composer.phar require ejz/hls-downloader:~1.0
 ```
 
 Let's test on an HLS file:
@@ -36,8 +29,9 @@ require(ROOT . '/vendor/autoload.php');
 
 use Ejz\HLSDownloader;
 $path = HLSDownloader::go("http://ejz.ru/hls/hls-flat/trailer.m3u8");
-echo $path, chr(10);
-foreach(scandir($path) as $file) echo $file, chr(10);
+echo $path, "\n";
+foreach(scandir($path) as $file)
+    echo $file, "\n";
 ```
 
 Will output:
