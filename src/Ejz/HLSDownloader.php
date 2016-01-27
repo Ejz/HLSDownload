@@ -23,7 +23,7 @@ class HLSDownloader {
         }
         if($is_ts) return $target;
         $collect = array();
-        foreach(array_values(array_unique(nsplit($content))) as $line) {
+        foreach(nsplit($content) as $line) {
             if(strpos($line, '#') === 0) {
                 $collect[] = $line;
                 continue;
