@@ -3,41 +3,40 @@
 namespace Ejz;
 
 class HLSDownloader {
-    public static function go($url, $path = null, $target = null) {
-        $path = $path ? $path : rtrim(`mktemp -d`);
-        if(!$target) {
-            $ext = file_get_ext($url);
-            $name = file_get_name($url);
-            $ext = $ext ? ('.' . $ext) : '';
-            if(!$name) return false;
-            $target = "{$path}/{$name}{$ext}";
-        } else $target = "{$path}/{$target}";
-        // trigger_error("Save '{$url}' --> '{$target}'", E_USER_NOTICE);
-        $content = curl($url, array(
-            CURLOPT_CONNECTTIMEOUT => 0,
-            CURLOPT_TIMEOUT => 400
-        ));
-        file_put_contents($target, $content);
-        if(strpos($content, '#EXTM3U') !== 0) return true;
-        $lines = nsplit($content);
-        $lines = array_unique($lines);
-        $replaceFrom = array();
-        $replaceTo = array();
-        foreach($lines as $line) {
-            if(strpos($line, '#') === 0) continue;
-            if(host($line)) return false; // TODO: HANDLE THIS CASE
-            $_line = str_replace('/', '-', $line);
-            $_line = preg_replace('/[\.-]{2,}/', '', $_line);
-            if($_line != $line) {
-                $replaceFrom[] = $line;
-                $replaceTo[] = $_line;
+    public static function go($url) {
+        $dir = rtrim(`mktemp -d`);
+        if(self::goBackend($url, $dir)) return $dir;
+        return;
+    }
+    private static function goBackend($url, $dir) {
+        $target = toStorage($url, [
+            'dir' => $dir, 'subdir' => ''
+        ]);
+        $content = file_get_contents($dir . '/' . $target);
+        if(!$content) return false;
+        $is_ts = strpos($content, '#EXTM3U') !== 0;
+        $ext = $is_ts ? 'ts' : 'm3u8';
+        if(file_get_ext($target) != $ext) {
+            $_ = preg_replace('~\.\w+$~', ".{$ext}", $target);
+            rename($dir . '/' . $target, $dir . '/' . $_);
+            $target = $_;
+        }
+        if($is_ts) return $target;
+        $collect = array();
+        foreach(array_values(array_unique(nsplit($content))) as $line) {
+            if(strpos($line, '#') === 0) {
+                $collect[] = $line;
+                continue;
             }
-            self::go(dirname($url) . '/' . $line, $path, $_line);
+            $tmp = realurl($line, $url);
+            $_ = self::goBackend($tmp, $dir);
+            if(!$_) {
+                _warn(__CLASS__ . '::' . __FUNCTION__, "INVALID URL: '{$tmp}'");
+                continue;
+            }
+            $collect[] = preg_replace('~^/~', '', $_);
         }
-        if($replaceFrom and $replaceTo) {
-            $content = str_replace($replaceFrom, $replaceTo, $content);
-            file_put_contents($target, $content);
-        }
-        return $path;
+        file_put_contents($dir . '/' . $target, implode("\n", $collect) . "\n");
+        return $target;
     }
 }

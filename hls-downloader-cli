@@ -1,0 +1,26 @@
+#!/usr/bin/env php
+<?php
+
+define('ROOT', __DIR__);
+require(ROOT . '/vendor/autoload.php');
+
+use Ejz\HLSDownloader;
+
+$opts = getopts(array());
+
+if($opts === array()) goto help;
+if(!isset($opts[1]) or !host($opts[1])) goto help;
+
+$_ = HLSDownloader::go($opts[1]);
+echo $_, "\n";
+
+exit(0);
+
+help:
+
+ob_start();
+echo "Usage: hls-downloader-cli URL\n";
+$ob = ob_get_clean();
+fwrite(STDERR, $ob);
+
+exit(1);
