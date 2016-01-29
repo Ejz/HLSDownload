@@ -8,26 +8,26 @@ Recursive HTTP Live Streaming Downloader!
 $ curl -sSL 'https://raw.githubusercontent.com/Ejz/HLSDownloader/master/i.sh' | sudo bash
 $ hls-downloader-cli "http://ejz.ru/hls/hls-flat/trailer.m3u8"
 /tmp/tmp.jYqtLR4pVQ
-$ find /tmp/tmp.jYqtLR4pVQ -type f
-/tmp/tmp.jYqtLR4pVQ/1280x7203.ts
-/tmp/tmp.jYqtLR4pVQ/480x2705.ts
-/tmp/tmp.jYqtLR4pVQ/1280x720.m3u8
-/tmp/tmp.jYqtLR4pVQ/1280x7201.ts
-/tmp/tmp.jYqtLR4pVQ/640x3603.ts
-/tmp/tmp.jYqtLR4pVQ/480x270.m3u8
-/tmp/tmp.jYqtLR4pVQ/640x3604.ts
-/tmp/tmp.jYqtLR4pVQ/480x2703.ts
-/tmp/tmp.jYqtLR4pVQ/480x2704.ts
-/tmp/tmp.jYqtLR4pVQ/640x3601.ts
-/tmp/tmp.jYqtLR4pVQ/640x3605.ts
-/tmp/tmp.jYqtLR4pVQ/480x2702.ts
-/tmp/tmp.jYqtLR4pVQ/trailer.m3u8
-/tmp/tmp.jYqtLR4pVQ/480x2701.ts
-/tmp/tmp.jYqtLR4pVQ/640x360.m3u8
-/tmp/tmp.jYqtLR4pVQ/1280x7202.ts
-/tmp/tmp.jYqtLR4pVQ/640x3602.ts
-/tmp/tmp.jYqtLR4pVQ/1280x7205.ts
-/tmp/tmp.jYqtLR4pVQ/1280x7204.ts
+$ cd /tmp/tmp.jYqtLR4pVQ && find . -type f
+./1280x7203.ts
+./480x2705.ts
+./1280x720.m3u8
+./1280x7201.ts
+./640x3603.ts
+./480x270.m3u8
+./640x3604.ts
+./480x2703.ts
+./480x2704.ts
+./640x3601.ts
+./640x3605.ts
+./480x2702.ts
+./trailer.m3u8
+./480x2701.ts
+./640x360.m3u8
+./1280x7202.ts
+./640x3602.ts
+./1280x7205.ts
+./1280x7204.ts
 ```
 
 ### Quick start (PHP)
