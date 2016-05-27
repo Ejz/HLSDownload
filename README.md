@@ -7,27 +7,38 @@ Recursive HTTP Live Streaming Downloader!
 ```bash
 $ curl -sSL 'https://raw.githubusercontent.com/Ejz/HLSDownloader/master/i.sh' | sudo bash
 $ hls-downloader-cli "http://ejz.ru/hls/hls-flat/trailer.m3u8"
-/tmp/tmp.jYqtLR4pVQ
-$ cd /tmp/tmp.jYqtLR4pVQ && find . -type f
-./1280x7203.ts
-./480x2705.ts
-./1280x720.m3u8
-./1280x7201.ts
-./640x3603.ts
-./480x270.m3u8
-./640x3604.ts
-./480x2703.ts
-./480x2704.ts
-./640x3601.ts
-./640x3605.ts
-./480x2702.ts
-./trailer.m3u8
-./480x2701.ts
-./640x360.m3u8
-./1280x7202.ts
-./640x3602.ts
-./1280x7205.ts
-./1280x7204.ts
+http://ejz.ru/hls/hls-flat/480x2701.ts .. ./stream0/ts00000.ts
+http://ejz.ru/hls/hls-flat/480x2702.ts .. ./stream0/ts00001.ts
+http://ejz.ru/hls/hls-flat/480x2703.ts .. ./stream0/ts00002.ts
+http://ejz.ru/hls/hls-flat/480x2704.ts .. ./stream0/ts00003.ts
+http://ejz.ru/hls/hls-flat/480x2705.ts .. ./stream0/ts00004.ts
+http://ejz.ru/hls/hls-flat/480x270.m3u8 .. ./stream0/stream0.m3u8
+http://ejz.ru/hls/hls-flat/640x3601.ts .. ./stream1/ts00000.ts
+http://ejz.ru/hls/hls-flat/640x3602.ts .. ./stream1/ts00001.ts
+http://ejz.ru/hls/hls-flat/640x3603.ts .. ./stream1/ts00002.ts
+http://ejz.ru/hls/hls-flat/640x3604.ts .. ./stream1/ts00003.ts
+http://ejz.ru/hls/hls-flat/640x3605.ts .. ./stream1/ts00004.ts
+http://ejz.ru/hls/hls-flat/640x360.m3u8 .. ./stream1/stream1.m3u8
+http://ejz.ru/hls/hls-flat/1280x7201.ts .. ./stream2/ts00000.ts
+http://ejz.ru/hls/hls-flat/1280x7202.ts .. ./stream2/ts00001.ts
+http://ejz.ru/hls/hls-flat/1280x7203.ts .. ./stream2/ts00002.ts
+http://ejz.ru/hls/hls-flat/1280x7204.ts .. ./stream2/ts00003.ts
+http://ejz.ru/hls/hls-flat/1280x7205.ts .. ./stream2/ts00004.ts
+http://ejz.ru/hls/hls-flat/1280x720.m3u8 .. ./stream2/stream2.m3u8
+http://ejz.ru/hls/hls-flat/trailer.m3u8 .. ./hls.m3u8
+```
+
+There are two args in CLI mode: `-d` to set target directory, `-F` to filter stream playlists. Example, download just stream with highest bitrate (`BANDWIDTH` field in master playlist):
+
+```
+$ hls-downloader-cli -F BANDWIDTH=MAX "http://ejz.ru/hls/hls-flat/trailer.m3u8"
+http://ejz.ru/hls/hls-flat/1280x7201.ts .. ./stream2/ts00000.ts
+http://ejz.ru/hls/hls-flat/1280x7202.ts .. ./stream2/ts00001.ts
+http://ejz.ru/hls/hls-flat/1280x7203.ts .. ./stream2/ts00002.ts
+http://ejz.ru/hls/hls-flat/1280x7204.ts .. ./stream2/ts00003.ts
+http://ejz.ru/hls/hls-flat/1280x7205.ts .. ./stream2/ts00004.ts
+http://ejz.ru/hls/hls-flat/1280x720.m3u8 .. ./stream2/stream2.m3u8
+http://ejz.ru/hls/hls-flat/trailer.m3u8 .. ./hls.m3u8
 ```
 
 ### Quick start (PHP)
@@ -47,43 +58,26 @@ define('ROOT', __DIR__);
 require(ROOT . '/vendor/autoload.php');
 
 use Ejz\HLSDownloader;
-$path = HLSDownloader::go("http://ejz.ru/hls/hls-flat/trailer.m3u8");
-echo $path, "\n";
-foreach(scandir($path) as $file)
-    echo $file, "\n";
+
+$tmp = rtrim(`mktemp -d`);
+$link = "http://ejz.ru/hls/hls-flat/trailer.m3u8";
+$result = HLSDownloader::go($link, array('dir' => $tmp));
+if (!$result) {
+    echo "FAILED!\n";
+} else {
+    echo "SUCCESS!\n";
+    $files = nsplit(shell_exec("find " . escapeshellarg($tmp) . " | grep m3u8"));
+    foreach ($files as $file)
+        echo $file, "\n";
+}
 ```
 
 Will output:
 
 ```
-/tmp/tmp.oVCbca8212
-.
-..
-1280x7201.ts
-1280x7202.ts
-1280x7203.ts
-1280x7204.ts
-1280x7205.ts
-1280x720.m3u8
-480x2701.ts
-480x2702.ts
-480x2703.ts
-480x2704.ts
-480x2705.ts
-480x270.m3u8
-640x3601.ts
-640x3602.ts
-640x3603.ts
-640x3604.ts
-640x3605.ts
-640x360.m3u8
-trailer.m3u8
+SUCCESS!
+/tmp/tmp.EBlLhXenFY/stream1/stream1.m3u8
+/tmp/tmp.EBlLhXenFY/stream0/stream0.m3u8
+/tmp/tmp.EBlLhXenFY/hls.m3u8
+/tmp/tmp.EBlLhXenFY/stream2/stream2.m3u8
 ```
-
-### CI: Codeship
-
-[![Codeship Status for Ejz/HLSDownloader](https://codeship.com/projects/63b9a990-7045-0132-4b61-227a26fe7ed7/status)](https://codeship.com/projects/54502)
-
-### CI: Travis
-
-[![Travis Status for Ejz/HLSDownloader](https://travis-ci.org/Ejz/HLSDownloader.svg?branch=master)](https://travis-ci.org/Ejz/HLSDownloader)
