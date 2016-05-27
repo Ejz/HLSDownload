@@ -117,6 +117,7 @@ class HLSDownloader {
             }
             $streams[] = $info;
         }
+        if (!$streams) return null;
         $return = array();
         foreach ($filter as $f)
             if (is_numeric($f) and intval($f) >= 0)
@@ -128,6 +129,16 @@ class HLSDownloader {
                     $sort = array_column($streams, strtolower($m[1]));
                     $_ = array_search($m[3], $sort, $strict = false);
                     if (is_numeric($_)) $return[] = $_;
+                } elseif ($m[2] === "=" and strtolower($m[3]) === "min") {
+                    $sort = array_column($streams, strtolower($m[1]));
+                    asort($sort);
+                    list($key) = array_keys($sort);
+                    $return[] = $key;
+                } elseif ($m[2] === "=" and strtolower($m[3]) === "max") {
+                    $sort = array_column($streams, strtolower($m[1]));
+                    arsort($sort);
+                    list($key) = array_keys($sort);
+                    $return[] = $key;
                 }
             }
         return $return;

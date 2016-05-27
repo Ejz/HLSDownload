@@ -38,5 +38,11 @@ class HLSDownloaderTest extends PHPUnit_Framework_TestCase {
         $this->assertTrue($result);
         $this->assertTrue(count(glob($tmp . '/*.m3u8')) === 1);
         $this->assertTrue(count(glob($tmp . '/stream2')) === 1);
+        //
+        $tmp = rtrim(`mktemp -d`);
+        $result = HLSDownloader::go($link, ['dir' => $tmp, 'filter' => 'bandWIDTH=min']);
+        $this->assertTrue($result);
+        $this->assertTrue(count(glob($tmp . '/*.m3u8')) === 1);
+        $this->assertTrue(count(glob($tmp . '/stream0')) === 1);
     }
 }

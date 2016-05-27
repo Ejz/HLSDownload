@@ -6,20 +6,22 @@ require(ROOT . '/vendor/autoload.php');
 
 use Ejz\HLSDownloader;
 
-$opts = getopts(array());
+$opts = getopts(array('d' => true, 'F' => true));
 
 if($opts === array()) goto help;
 if(!isset($opts[1]) or !host($opts[1])) goto help;
 
-$_ = HLSDownloader::go($opts[1]);
-echo $_, "\n";
-
-exit(0);
+$settings = array();
+if (isset($opts['d'])) $settings['dir'] = $opts['d'];
+if (isset($opts['F'])) $settings['filter'] = $opts['filter'];
+if (HLSDownloader::go($opts[1], $settings))
+    exit(0);
+exit(1);
 
 help:
 
 ob_start();
-echo "Usage: hls-downloader-cli URL\n";
+echo "Usage: hls-downloader-cli [-d DIR] [-F FILTER] URL\n";
 $ob = ob_get_clean();
 fwrite(STDERR, $ob);
 
