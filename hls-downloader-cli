@@ -13,7 +13,7 @@ if(!isset($opts[1]) or !host($opts[1])) goto help;
 
 $settings = array();
 if (isset($opts['d'])) $settings['dir'] = $opts['d'];
-if (isset($opts['F'])) $settings['filter'] = $opts['filter'];
+if (isset($opts['F'])) $settings['filter'] = $opts['F'];
 if (HLSDownloader::go($opts[1], $settings))
     exit(0);
 exit(1);
