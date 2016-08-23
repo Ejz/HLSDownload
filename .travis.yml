@@ -5,11 +5,10 @@ branches:
 language: php
 
 php:
-  - 5.4
   - 5.5
 
 before_script:
   - curl -s http://getcomposer.org/installer | php
   - php composer.phar install
 
-script: phpunit
+script: URL="http://content.jwplatform.com/manifests/nJEIV3eJ.m3u8" phpunit
