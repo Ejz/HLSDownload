@@ -16,6 +16,7 @@
             "homepage": "http://ejz.ru/"
         }
     ],
+    "bin": ["bin/hlsdownload.php"],
     "require": {
         "php": ">=5.5.0",
         "ejz/core": "~1.0"

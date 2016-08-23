@@ -2,12 +2,13 @@
 
 namespace Ejz;
 
-class HLSDownloader {
+class HLSDownload {
     public static function go($url, $settings = array()) {
         $dir = isset($settings['dir']) ? $settings['dir'] : '.';
-        $ua = isset($settings['ua']) ? $settings['ua'] : "HLSDownloader (github.com/Ejz/HLSDownloader)";
-        if (!is_dir($dir) or !is_writable($dir)) {
-            self::log("INVALID DIRECTORY: {$dir}", E_USER_WARNING);
+        $ua = isset($settings['ua']) ? $settings['ua'] : "HLSDownload (github.com/Ejz/HLSDownload)";
+        if (!is_dir($dir)) $dir = '.';
+        if (!is_writable($dir)) {
+            _log("DIRECTORY IS NOT WRITABLE: {$dir}", E_USER_WARNING);
             return false;
         }
         $dir = rtrim($dir, '/');
@@ -19,20 +20,33 @@ class HLSDownloader {
             'ts' => null
         ]);
     }
-    private static function log($msg, $level = E_USER_NOTICE) {
-        if (defined('STDIN') and defined('STDERR'))
-            fwrite(STDERR, $msg . "\n");
-        else trigger_error(__CLASS__ . ': ' . $msg, $level);
+    public static function progress($ch, $total, $download) {
+        static $last = null;
+        static $already = array();
+        if (!$total) return;
+        $percent = round((100 * $download) / $total);
+        if ($percent < 0) $percent = 0;
+        if ($percent > 100) $percent = 100;
+        if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent < 100) return;
+        $info = curl_getinfo($ch);
+        $url = $info['url'];
+        if (isset($already[$url]) and $already[$url]) return;
+        if ($percent == 100) $already[$url] = true;
+        fwrite(STDERR, "\r{$url}: {$percent}%" . ($percent == 100 ? "\n" : ""));
     }
     private static function goBackend($url, $settings) {
         $dir = $settings['dir'];
         $stream = $settings['stream'];
         $ts = $settings['ts'];
         $url = realurl($url);
-        $content = curl($url, array(CURLOPT_USERAGENT => $settings['ua']));
+        $content = curl($url, array(
+            CURLOPT_USERAGENT => $settings['ua'],
+            "CURLOPT_PROGRESSFUNCTION" => array(__CLASS__, 'progress'),
+            "CURLOPT_NOPROGRESS" => false
+        ));
         if (strpos($content, '#EXTM3U') !== 0) {
             $d = (is_null($ts) ? $dir . '/ts.ts' : $dir . sprintf("/ts%05s.ts", $ts));
-            self::log("{$url} .. {$d}");
+            _log("{$url} .. {$d}");
             return file_put_contents($d, $content) > 0;
         }
         $collect = array();
@@ -64,7 +78,7 @@ class HLSDownloader {
                 $line = realurl($line, $url);
                 $return = self::goBackend($line, ['ts' => $ts] + $settings);
                 if (!$return) {
-                    self::log("ERROR WHILE PROCESSING: {$line}");
+                    _log("ERROR WHILE PROCESSING: {$line}");
                     return false;
                 }
                 $collect[] = sprintf("ts%05s.ts", $ts);
@@ -75,25 +89,25 @@ class HLSDownloader {
                     if (!is_dir($d = $dir . '/stream' . $stream)) mkdir($d);
                     $return = self::goBackend($line, ['stream' => $stream, 'dir' => $d] + $settings);
                     if (!$return) {
-                        self::log("ERROR WHILE PROCESSING: {$line}");
+                        _log("ERROR WHILE PROCESSING: {$line}");
                         return false;
                     }
                     $collect[] = "stream{$stream}/stream{$stream}.m3u8";
                 }
                 $ext_x_stream_inf = false;
             } else {
-                self::log("PARSE ERROR: {$url}");
+                _log("PARSE ERROR: {$url}");
                 return false;
             }
         }
         $stream = $settings['stream'];
         $collect = implode("\n", $collect) . "\n";
         if (is_null($stream) and strpos($collect, "\n#EXT-X-STREAM-INF:") === false) {
-            self::log("NO STREAMS: {$url}");
+            _log("NO STREAMS: {$url}");
             return false;
         }
         $d = (is_null($stream) ? $dir . '/hls.m3u8' : $dir . "/stream{$stream}.m3u8");
-        self::log("{$url} .. {$d}");
+        _log("{$url} .. {$d}");
         return file_put_contents(
             $d,
             $collect
