@@ -17,36 +17,54 @@ class HLSDownload {
             'ua' => $ua,
             'filter' => (isset($settings['filter']) ? $settings['filter'] : null),
             'stream' => null,
-            'ts' => null
+            'ts' => null,
+            'progress' => ((isset($settings['progress']) and is_callable($settings['progress'])) ? $settings['progress'] : null),
+            'limitRate' => (isset($settings['limitRate']) ? $settings['limitRate'] : null)
         ]);
     }
-    public static function progress($ch, $total, $download) {
-        static $last = null;
-        static $already = array();
-        if (!$total) return;
-        $percent = round((100 * $download) / $total);
-        if ($percent < 0) $percent = 0;
-        if ($percent > 100) $percent = 100;
-        if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent < 100) return;
-        $info = curl_getinfo($ch);
-        $url = $info['url'];
-        if (isset($already[$url]) and $already[$url]) return;
-        if ($percent == 100) $already[$url] = true;
-        fwrite(STDERR, "\r{$url}: {$percent}%" . ($percent == 100 ? "\n" : ""));
+    private static function getProgressClosure($progress) {
+        return function ($ch, $total, $download) use ($progress) {
+            static $last = null;
+            static $done = false;
+            if (!$total) return;
+            $percent = round((100 * $download) / $total);
+            if ($percent < 0) $percent = 0;
+            if ($percent > 100) $percent = 100;
+            if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent != 100) return;
+            $last = microtime(true);
+            $info = curl_getinfo($ch);
+            $url = $info['url'];
+            if ($done) return;
+            if ($percent == 100) $done = true;
+            $progress($url, $percent);
+        };
     }
     private static function goBackend($url, $settings) {
         $dir = $settings['dir'];
         $stream = $settings['stream'];
         $ts = $settings['ts'];
         $url = realurl($url);
-        $content = curl($url, array(
+        $curl = array(
             CURLOPT_USERAGENT => $settings['ua'],
-            "CURLOPT_PROGRESSFUNCTION" => array(__CLASS__, 'progress'),
-            "CURLOPT_NOPROGRESS" => false
-        ));
+            CURLOPT_TIMEOUT => 120
+        );
+        if ($settings['progress']) {
+            $curl[CURLOPT_NOPROGRESS] = false;
+            $curl[CURLOPT_PROGRESSFUNCTION] = self::getProgressClosure($settings['progress']);
+        }
+        if ($settings['limitRate'] and preg_match('~^(\d+)\s*(k|m|g)$~i', $settings['limitRate'], $match)) {
+            if (defined('CURLOPT_MAX_RECV_SPEED_LARGE')) {
+                $m = array('k' => pow(2, 10), 'm' => pow(2, 20), 'g' => pow(2, 30));
+                $curl[CURLOPT_MAX_RECV_SPEED_LARGE] = intval($match[1]) * $m[strtolower($match[2])];
+            } else {
+                _log("CURLOPT_MAX_RECV_SPEED_LARGE IS NOT DEFINED!");
+                return false;
+            }
+        }
+        $content = curl($url, $curl);
         if (strpos($content, '#EXTM3U') !== 0) {
             $d = (is_null($ts) ? $dir . '/ts.ts' : $dir . sprintf("/ts%05s.ts", $ts));
-            _log("{$url} .. {$d}");
+            _log("{$url} -> {$d}");
             return file_put_contents($d, $content) > 0;
         }
         $collect = array();
@@ -107,7 +125,7 @@ class HLSDownload {
             return false;
         }
         $d = (is_null($stream) ? $dir . '/hls.m3u8' : $dir . "/stream{$stream}.m3u8");
-        _log("{$url} .. {$d}");
+        _log("{$url} -> {$d}");
         return file_put_contents(
             $d,
             $collect
