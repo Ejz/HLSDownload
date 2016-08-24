@@ -32,7 +32,7 @@ help:
 ob_start();
 echo "HLSDownload 1.3 by Ejz Cernisev.
 
-Usage: hlsdownload [options] M3U8
+Usage: hlsdownload [options] <M3U8>
 
 Options:
   -F <filter>          Filter M3U8 streams by params, ex: bandwidth=max
