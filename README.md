@@ -1,4 +1,4 @@
-# HLSDownloader [![Travis Status for Ejz/HLSDownloader](https://travis-ci.org/Ejz/HLSDownloader.svg?branch=master)](https://travis-ci.org/Ejz/HLSDOwnloader)
+# HLSDownload [![Travis Status for Ejz/HLSDownload](https://travis-ci.org/Ejz/HLSDownload.svg?branch=master)](https://travis-ci.org/Ejz/HLSDownload)
 
 Recursive HTTP Live Streaming Downloader!
 
