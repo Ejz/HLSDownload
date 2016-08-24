@@ -30,7 +30,16 @@ exit(1);
 help:
 
 ob_start();
-echo "Usage: hlsdownload [-d DIR] [-F FILTER] URL\n";
+echo "HLSDownload 1.3 by Ejz Cernisev.
+
+Usage: hlsdownload [options] M3U8
+
+Options:
+  -F <filter>          Filter M3U8 streams by params, ex: bandwidth=max
+  -d <dir>             Target directory
+  --limit-rate <speed> Limit download speed
+  --progress           Show progress
+";
 $ob = ob_get_clean();
 fwrite(STDERR, $ob);
 
