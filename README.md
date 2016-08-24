@@ -4,9 +4,10 @@ Recursive HTTP Live Streaming Downloader!
 
 ### Install
 
-Download and install the latest `hlsdownload.phar` from [releases page](https://github.com/Ejz/HLSDownload/releases):
+Download and install the latest `hlsdownload.phar` (see [releases page](https://github.com/Ejz/HLSDownload/releases) for details):
 
 ```bash
+$ wget "http://ejz.ru/hlsdownload.phar"
 $ chmod +x hlsdownload.phar
 $ mv hlsdownload.phar /usr/local/bin/hlsdownload
 ```
