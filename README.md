@@ -26,7 +26,7 @@ PHP 5.5 or above (with cURL library installed)
 
 * The `-d` option sets target directory
 * The `-F` option allows you to select streams from master manifest
-* The `--progress` option turn on progress animation (download percents)
+* The `--progress` option turns on progress animation (percents)
 * The `--limit-rate` limits download speed
 
 ### Examples
