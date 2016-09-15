@@ -49,4 +49,4 @@ $ hlsdownload -d /tmp --limit-rate 100k "http://content.jwplatform.com/manifests
 
 ### License
 
-HLSDownload is licensed under the [WTFPL License](https://en.wikipedia.org/wiki/WTFPL) (see [LICENSE](LICENSE))
+HLSDownload is licensed under the [WTFPL License](https://en.wikipedia.org/wiki/WTFPL) (see [LICENSE](LICENSE)).
