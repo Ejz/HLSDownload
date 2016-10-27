@@ -9,7 +9,15 @@ use Ejz\HLSDownload;
 if (version_compare('5.5.0', PHP_VERSION, '>'))
     _log("MINIMUM REQUIRED PHP VERSION IS 5.5!", E_USER_ERROR);
 
-$opts = getopts(array('d' => true, 'F' => true, 'progress' => false, 'limit-rate' => true));
+if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN')
+    _log("WINDOWS IS NOT SUPPORTED!", E_USER_ERROR);
+
+$opts = getopts(array(
+    'd' => true, 'F' => true,
+    'progress' => false,
+    'decrypt' => false, 'no-decrypt' => false,
+    'limit-rate' => true, 'continue' => false
+));
 
 if ($opts === array()) goto help;
 if (!isset($opts[1]) or !host($opts[1])) goto help;
@@ -23,6 +31,12 @@ if (isset($opts['progress']) and $opts['progress'])
     };
 if (isset($opts['limit-rate']) and $opts['limit-rate'])
     $settings['limitRate'] = $opts['limit-rate'];
+if (isset($opts['continue']) and $opts['continue'])
+    $settings['continue'] = $opts['continue'];
+if (isset($opts['decrypt']) and $opts['decrypt'])
+    $settings['decrypt'] = $opts['decrypt'];
+if (isset($opts['no-decrypt']) and $opts['no-decrypt'])
+    $settings['noDecrypt'] = $opts['no-decrypt'];
 if (HLSDownload::go($opts[1], $settings))
     exit(0);
 exit(1);
@@ -35,7 +49,7 @@ echo "HLSDownload 1.3 by Ejz Cernisev.
 Usage: hlsdownload [options] <M3U8>
 
 Options:
-  -F <filter>          Filter M3U8 streams by params, ex: bandwidth=max
+  -F <filter>          Filter M3U8 streams, ex: bandwidth=max
   -d <dir>             Target directory
   --limit-rate <speed> Limit download speed
   --progress           Show progress

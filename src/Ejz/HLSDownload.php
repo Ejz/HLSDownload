@@ -18,6 +18,7 @@ class HLSDownload {
             'filter' => (isset($settings['filter']) ? $settings['filter'] : null),
             'stream' => null,
             'ts' => null,
+            'key' => null,
             'progress' => ((isset($settings['progress']) and is_callable($settings['progress'])) ? $settings['progress'] : null),
             'limitRate' => (isset($settings['limitRate']) ? $settings['limitRate'] : null)
         ]);
@@ -65,13 +66,50 @@ class HLSDownload {
         if (strpos($content, '#EXTM3U') !== 0) {
             $d = (is_null($ts) ? $dir . '/ts.ts' : $dir . sprintf("/ts%05s.ts", $ts));
             _log("{$url} -> {$d}");
-            return file_put_contents($d, $content) > 0;
+            $_ = file_put_contents($d, $content);
+            if (!$settings['key']) return $_ > 0;
+            $_ = self::decryptChunk($d, $key['method'], $key['uri'], $key['iv']);
+            if (is_string($_)) {
+                _log("ERROR WHILE DECRYPTING: {$_}");
+                return false;
+            }
+            if (!$_) _log("CHUNK {$d} IS NOT DECRYPTED CORRECTLY!");
+            return $_;
         }
         $collect = array();
         $extinf = false;
         $ext_x_stream_inf = false;
         $filter = self::prepareFilter($settings['filter'], $content);
+        $settings['key'] = null;
         foreach (nsplit($content) as $line) {
+            if (strpos($line, '#EXT-X-KEY:') === 0) {
+                $extract = function ($key) use ($line) {
+                    preg_match('~(^|,)' . $key . '=(")?(.*?)\2(,|$)~i', $line, $match);
+                    if (!$match) return null;
+                    $match = $match[3];
+                    $match = trim($match, '"');
+                    return $match;
+                };
+                $method = $extract('method');
+                $uri = $extract('uri');
+                if (strtolower($method) != 'none') {
+                    if (strpos($uri, $_ = 'data:text/plain;base64,') === 0)
+                        $uri = base64_decode(substr($uri, strlen($_)));
+                    elseif (host($_ = realurl($uri, $url))) $uri = curl($_);
+                    else $uri = null;
+                    if (!$uri) {
+                        _log("ERROR WHILE GETTING KEY: {$line}");
+                        return false;
+                    }
+                    $uri = bin2hex(trim($uri));
+                    $settings['key'] = array(
+                        'method' => $method,
+                        'uri' => $uri,
+                        'iv' => $extract('iv'),
+                        'keyformat' => $extract('keyformat'),
+                    );
+                } else $settings['key'] = null;
+            }
             if (strpos($line, '#EXTINF:') === 0) {
                 $collect[] = $line;
                 $extinf = true;
@@ -130,6 +168,31 @@ class HLSDownload {
             $d,
             $collect
         ) > 0;
+    }
+    private static function decryptChunk($chunk, $method, $key, $iv) {
+        $methods = array("AES-128");
+        if (!in_array(strtolower($method), array_map('strtolower', $methods)))
+            return 'Unknown encryption method!';
+        if (!is_file($chunk)) return 'Chunk file is NOT found!';
+        exec('which openssl && which file', $output, $return);
+        if ($return != '0') return "openssl or file is NOT found!";
+        $tmp = rtrim(`mktemp`);
+        shell_exec($_ = sprintf(
+            "openssl aes-128-cbc -d -in %s -out %s -p -nosalt -iv %s -K %s",
+            escapeshellarg($chunk),
+            escapeshellarg($tmp),
+            preg_replace('~^0x~', '', $iv),
+            escapeshellarg($key)
+        ));
+        $_ = shell_exec("file 2>&1 " . escapeshellarg($tmp));
+        if (stripos($_, 'MPEG transport') !== false) {
+            unlink($chunk);
+            rename($tmp, $chunk);
+            return true;
+        } else {
+            unlink($tmp);
+            return false;
+        }
     }
     private static function prepareFilter($filter, $content) {
         if (is_null($filter)) return $filter;
