@@ -3,10 +3,15 @@
 namespace Ejz;
 
 class HLSDownload {
+    const UA = "HLSDownload (github.com/Ejz/HLSDownload)";
     public static function go($url, $settings = array()) {
         $dir = isset($settings['dir']) ? $settings['dir'] : '.';
-        $ua = isset($settings['ua']) ? $settings['ua'] : "HLSDownload (github.com/Ejz/HLSDownload)";
-        if (!is_dir($dir)) $dir = '.';
+        $ua = isset($settings['ua']) ? $settings['ua'] : self::UA;
+        if (!is_dir($dir)) exec("mkdir -p " . escapeshellarg($dir));
+        if (!is_dir($dir)) {
+            _log("INVALID DIR: {$dir}", E_USER_WARNING);
+            return false;
+        }
         if (!is_writable($dir)) {
             _log("DIRECTORY IS NOT WRITABLE: {$dir}", E_USER_WARNING);
             return false;
@@ -16,9 +21,11 @@ class HLSDownload {
             'dir' => $dir,
             'ua' => $ua,
             'filter' => (isset($settings['filter']) ? $settings['filter'] : null),
+            'decrypt' => (isset($settings['decrypt']) ? $settings['decrypt'] : true),
             'stream' => null,
             'ts' => null,
             'key' => null,
+            'continue' => (isset($settings['continue']) ? $settings['continue'] : false),
             'progress' => ((isset($settings['progress']) and is_callable($settings['progress'])) ? $settings['progress'] : null),
             'limitRate' => (isset($settings['limitRate']) ? $settings['limitRate'] : null)
         ]);
@@ -62,19 +69,27 @@ class HLSDownload {
                 return false;
             }
         }
+        if ($settings['continue'] and !is_null($ts)) {
+            $d = $dir . sprintf("/ts%05s.ts", $ts);
+            if (file_exists($d) and filesize($d) > 0) {
+                _log("{$url} -> {$d} (ALREADY)");
+                return true;
+            }
+        }
         $content = curl($url, $curl);
         if (strpos($content, '#EXTM3U') !== 0) {
             $d = (is_null($ts) ? $dir . '/ts.ts' : $dir . sprintf("/ts%05s.ts", $ts));
             _log("{$url} -> {$d}");
             $_ = file_put_contents($d, $content);
-            if (!$settings['key']) return $_ > 0;
-            $_ = self::decryptChunk($d, $key['method'], $key['uri'], $key['iv']);
-            if (is_string($_)) {
-                _log("ERROR WHILE DECRYPTING: {$_}");
+            if (!$settings['key'] or !$_) return $_ > 0;
+            rename($d, $dd = $d . '.tmp');
+            $error = self::decryptChunk($dd, $settings['key']);
+            if ($error) {
+                _log("ERROR WHILE DECRYPTING: {$error}");
                 return false;
             }
-            if (!$_) _log("CHUNK {$d} IS NOT DECRYPTED CORRECTLY!");
-            return $_;
+            rename($dd, $d);
+            return true;
         }
         $collect = array();
         $extinf = false;
@@ -82,21 +97,24 @@ class HLSDownload {
         $filter = self::prepareFilter($settings['filter'], $content);
         $settings['key'] = null;
         foreach (nsplit($content) as $line) {
-            if (strpos($line, '#EXT-X-KEY:') === 0) {
-                $extract = function ($key) use ($line) {
-                    preg_match('~(^|,)' . $key . '=(")?(.*?)\2(,|$)~i', $line, $match);
+            if (strpos($line, $str = '#EXT-X-KEY:') === 0) {
+                $_line = substr($line, strlen($str));
+                $extract = function ($key) use ($_line) {
+                    preg_match($r = '~(^|,)' . $key . '="([^"]*)"(,|$)~i', $_line, $match1);
+                    preg_match($r = '~(^|,)' . $key . '=(.*?)(,|$)~i', $_line, $match2);
+                    $match = $match1 ?: $match2;
                     if (!$match) return null;
-                    $match = $match[3];
+                    $match = $match[2];
                     $match = trim($match, '"');
                     return $match;
                 };
                 $method = $extract('method');
                 $uri = $extract('uri');
-                if (strtolower($method) != 'none') {
-                    if (strpos($uri, $_ = 'data:text/plain;base64,') === 0)
-                        $uri = base64_decode(substr($uri, strlen($_)));
-                    elseif (host($_ = realurl($uri, $url))) $uri = curl($_);
-                    else $uri = null;
+                if ($uri and strpos($uri, $_ = 'data:text/plain;base64,') === 0)
+                    $uri = base64_decode(substr($uri, strlen($_)));
+                elseif ($uri and host($_ = realurl($uri, $url))) $uri = curl($_);
+                else $uri = null;
+                if ($settings['decrypt'] and strtolower($method) != 'none') {                    
                     if (!$uri) {
                         _log("ERROR WHILE GETTING KEY: {$line}");
                         return false;
@@ -108,7 +126,22 @@ class HLSDownload {
                         'iv' => $extract('iv'),
                         'keyformat' => $extract('keyformat'),
                     );
-                } else $settings['key'] = null;
+                } elseif ($settings['decrypt'] and strtolower($method) == 'none') {
+                    $settings['key'] = null;
+                } elseif (!$settings['decrypt'] and strtolower($method) != 'none') {
+                    if (!$uri) {
+                        _log("ERROR WHILE GETTING KEY: {$line}");
+                        return false;
+                    }
+                    if (!is_dir($d = $dir . '/keys')) mkdir($d);
+                    $i = 0;
+                    while (file_exists($file = $d . '/key' . $i)) $i++;
+                    file_put_contents($file, $uri);
+                    $collect[] = str_replace_once($extract('uri'), 'keys/key' . $i, $line);
+                } else {
+                    $collect[] = $line;
+                }
+                continue;
             }
             if (strpos($line, '#EXTINF:') === 0) {
                 $collect[] = $line;
@@ -158,40 +191,45 @@ class HLSDownload {
         }
         $stream = $settings['stream'];
         $collect = implode("\n", $collect) . "\n";
-        if (is_null($stream) and strpos($collect, "\n#EXT-X-STREAM-INF:") === false) {
-            _log("NO STREAMS: {$url}");
-            return false;
-        }
-        $d = (is_null($stream) ? $dir . '/hls.m3u8' : $dir . "/stream{$stream}.m3u8");
+        if (is_null($stream) and strpos($collect, "\n#EXT-X-STREAM-INF:") === false)
+            $d = $dir . '/stream0.m3u8';
+        elseif (is_null($stream))
+            $d = $dir . '/hls.m3u8';
+        else $d = $dir . "/stream{$stream}.m3u8";
         _log("{$url} -> {$d}");
         return file_put_contents(
             $d,
             $collect
         ) > 0;
     }
-    private static function decryptChunk($chunk, $method, $key, $iv) {
+    private static function decryptChunk($chunk, $key) {
+        @ $method = $key['method'];
+        @ $uri = $key['uri'];
+        @ $iv = $key['iv'];
         $methods = array("AES-128");
         if (!in_array(strtolower($method), array_map('strtolower', $methods)))
             return 'Unknown encryption method!';
         if (!is_file($chunk)) return 'Chunk file is NOT found!';
         exec('which openssl && which file', $output, $return);
         if ($return != '0') return "openssl or file is NOT found!";
+        if (!$uri) return "Invalid URI!";
+        if (!$iv) return "Invalid IV!";
         $tmp = rtrim(`mktemp`);
         shell_exec($_ = sprintf(
             "openssl aes-128-cbc -d -in %s -out %s -p -nosalt -iv %s -K %s",
             escapeshellarg($chunk),
             escapeshellarg($tmp),
             preg_replace('~^0x~', '', $iv),
-            escapeshellarg($key)
+            escapeshellarg($uri)
         ));
         $_ = shell_exec("file 2>&1 " . escapeshellarg($tmp));
         if (stripos($_, 'MPEG transport') !== false) {
             unlink($chunk);
             rename($tmp, $chunk);
-            return true;
+            return '';
         } else {
             unlink($tmp);
-            return false;
+            return 'Error while decoding!';
         }
     }
     private static function prepareFilter($filter, $content) {

@@ -33,10 +33,14 @@ if (isset($opts['limit-rate']) and $opts['limit-rate'])
     $settings['limitRate'] = $opts['limit-rate'];
 if (isset($opts['continue']) and $opts['continue'])
     $settings['continue'] = $opts['continue'];
-if (isset($opts['decrypt']) and $opts['decrypt'])
-    $settings['decrypt'] = $opts['decrypt'];
-if (isset($opts['no-decrypt']) and $opts['no-decrypt'])
-    $settings['noDecrypt'] = $opts['no-decrypt'];
+if (
+    isset($opts['decrypt']) and $opts['decrypt']
+    and isset($opts['no-decrypt']) and $opts['no-decrypt']
+) {
+    fwrite(STDERR, "Error: used --decrypt with --no-decrypt\n");
+    exit(1);
+}
+$settings['decrypt'] = !(isset($opts['no-decrypt']) and $opts['no-decrypt']);
 if (HLSDownload::go($opts[1], $settings))
     exit(0);
 exit(1);
@@ -44,15 +48,18 @@ exit(1);
 help:
 
 ob_start();
-echo "HLSDownload 1.3 by Ejz Cernisev.
+echo "HLSDownload 1.4 by Ejz Cernisev.
 
 Usage: hlsdownload [options] <M3U8>
 
 Options:
   -F <filter>          Filter M3U8 streams, ex: bandwidth=max
   -d <dir>             Target directory
-  --limit-rate <speed> Limit download speed
+  --limit-rate <speed> Limit download speed (can use K, M, G)
   --progress           Show progress
+  --decrypt            Decrypt every chunk
+  --no-decrypt         Turn off decryption
+  --continue           Continue download (in case of disconnect)
 ";
 $ob = ob_get_clean();
 fwrite(STDERR, $ob);
