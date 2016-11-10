@@ -51,7 +51,8 @@ class HLSDownload {
         $dir = $settings['dir'];
         $stream = $settings['stream'];
         $ts = $settings['ts'];
-        $url = realurl($url);
+        $isFile = is_file($url);
+        if (!$isFile) $url = realurl($url);
         $curl = array(
             CURLOPT_USERAGENT => $settings['ua'],
             CURLOPT_TIMEOUT => 120
@@ -76,7 +77,12 @@ class HLSDownload {
                 return true;
             }
         }
-        $content = curl($url, $curl);
+        if (host($url)) $content = curl($url, $curl);
+        elseif ($isFile) $content = file_get_contents($url);
+        else $content = null;
+        if (!$content) return false;
+        if (strpos($content, '#EXTM3U') !== 0 and !$ts)
+            return null;
         if (strpos($content, '#EXTM3U') !== 0) {
             $d = (is_null($ts) ? $dir . '/ts.ts' : $dir . sprintf("/ts%05s.ts", $ts));
             _log("{$url} -> {$d}");
