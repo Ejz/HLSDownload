@@ -17,7 +17,7 @@ class HLSDownload {
             return false;
         }
         $dir = rtrim($dir, '/');
-        return self::goBackend($url, [
+        return self::goBackend((is_file($url) ? $url : realurl($url)), [
             'dir' => $dir,
             'ua' => $ua,
             'filter' => (isset($settings['filter']) ? $settings['filter'] : null),
@@ -51,8 +51,13 @@ class HLSDownload {
         $dir = $settings['dir'];
         $stream = $settings['stream'];
         $ts = $settings['ts'];
-        $isFile = is_file($url);
-        if (!$isFile) $url = realurl($url);
+        $realurl = function ($link) use ($url) {
+            if (is_file($url) and !host($link))
+                return preg_replace('~/[^/]+$~', '/', $url) . $link;
+            elseif (host($link))
+                return realurl($link, $url);
+            return '';
+        };
         $curl = array(
             CURLOPT_USERAGENT => $settings['ua'],
             CURLOPT_TIMEOUT => 120
@@ -78,7 +83,7 @@ class HLSDownload {
             }
         }
         if (host($url)) $content = curl($url, $curl);
-        elseif ($isFile) $content = file_get_contents($url);
+        elseif (is_file($url)) $content = file_get_contents($url);
         else $content = null;
         if (!$content) return false;
         if (strpos($content, '#EXTM3U') !== 0 and is_null($ts))
@@ -115,10 +120,13 @@ class HLSDownload {
                     return $match;
                 };
                 $method = $extract('method');
-                $uri = $extract('uri');
+                $uri = $_uri = $extract('uri');
                 if ($uri and strpos($uri, $_ = 'data:text/plain;base64,') === 0)
                     $uri = base64_decode(substr($uri, strlen($_)));
-                elseif ($uri and host($_ = realurl($uri, $url))) $uri = curl($_);
+                elseif ($uri and $_ = $realurl($uri)) {
+                    if (host($_)) $uri = curl($_);
+                    else $uri = file_get_contents($_);
+                }
                 else $uri = null;
                 if ($settings['decrypt'] and strtolower($method) != 'none') {                    
                     if (!$uri) {
@@ -141,7 +149,9 @@ class HLSDownload {
                     }
                     if (!is_dir($d = $dir . '/keys')) mkdir($d);
                     $i = 0;
-                    while (file_exists($file = $d . '/key' . $i)) $i++;
+                    while (file_exists($file = $d . '/key' . $i) and md5_file($file) != md5($uri))
+                        $i++;
+                    _log("SAVE KEY: {$_uri} -> {$file}");
                     file_put_contents($file, $uri);
                     $collect[] = str_replace_once($extract('uri'), 'keys/key' . $i, $line);
                 } else {
@@ -170,7 +180,7 @@ class HLSDownload {
                 continue;
             }
             if ($extinf) {
-                $line = realurl($line, $url);
+                $line = $realurl($line);
                 $return = self::goBackend($line, ['ts' => $ts] + $settings);
                 if (!$return) {
                     _log("ERROR WHILE PROCESSING: {$line}");
@@ -180,7 +190,7 @@ class HLSDownload {
                 $extinf = false;
             } elseif ($ext_x_stream_inf) {
                 if (is_null($filter) or in_array($stream, $filter)) {
-                    $line = realurl($line, $url);
+                    $line = $realurl($line);
                     if (!is_dir($d = $dir . '/stream' . $stream)) mkdir($d);
                     $return = self::goBackend($line, ['stream' => $stream, 'dir' => $d] + $settings);
                     if (!$return) {
