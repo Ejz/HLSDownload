@@ -81,7 +81,7 @@ class HLSDownload {
         elseif ($isFile) $content = file_get_contents($url);
         else $content = null;
         if (!$content) return false;
-        if (strpos($content, '#EXTM3U') !== 0 and !$ts)
+        if (strpos($content, '#EXTM3U') !== 0 and is_null($ts))
             return null;
         if (strpos($content, '#EXTM3U') !== 0) {
             $d = (is_null($ts) ? $dir . '/ts.ts' : $dir . sprintf("/ts%05s.ts", $ts));
