@@ -54,7 +54,7 @@ class HLSDownload {
         $realurl = function ($link) use ($url) {
             if (is_file($url) and !host($link))
                 return preg_replace('~/[^/]+$~', '/', $url) . $link;
-            elseif (host($link))
+            elseif (host($link) or host($url))
                 return realurl($link, $url);
             return '';
         };

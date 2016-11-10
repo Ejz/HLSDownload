@@ -19,7 +19,7 @@ $opts = getopts(array(
     'limit-rate' => true, 'continue' => false
 ));
 
-if ($opts === array()) goto help;
+if ($opts === array() or isset($opts[2])) goto help;
 if (!isset($opts[1]) or !(host($opts[1]) or is_file($opts[1]))) goto help;
 
 $settings = array();
