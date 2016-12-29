@@ -85,11 +85,17 @@ class HLSDownload {
                 return false;
             }
         }
-        $curl = function ($link) use ($curl_settings, $tmp, $url) {
+        $curl = function ($link) use ($curl_settings, $tmp) {
+            $err = "ERROR WHILE TRYING TO FETCH: {$link}";
+            if (!host($link) and is_file($link)) {
+                $content = file_get_contents($link);
+                if (!$content) _err($err);
+                return $content;
+            }
             $file = $tmp . '/' . md5($link);
             if (!is_file($file)) {
                 $content = curl($link, $curl_settings);
-                if (!$content) _err("ERROR WHILE TRYING TO FETCH: {$link}");
+                if (!$content) _err($err);
                 file_put_contents($file, $content);
             }
             return file_get_contents($file);
@@ -101,10 +107,7 @@ class HLSDownload {
                 return true;
             }
         }
-        if (host($url)) $content = $curl($url);
-        elseif (is_file($url)) $content = file_get_contents($url);
-        else $content = null;
-        if (!$content) return false;
+        $content = $curl($url);
         if (strpos($content, '#EXTM3U') !== 0 and is_null($ts))
             return null;
         if (strpos($content, '#EXTM3U') !== 0) {
@@ -143,8 +146,7 @@ class HLSDownload {
                 if ($uri and strpos($uri, $_ = 'data:text/plain;base64,') === 0)
                     $uri = base64_decode(substr($uri, strlen($_)));
                 elseif ($uri and ($_ = $realurl($uri))) {
-                    if (host($_)) $uri = $curl($_);
-                    else $uri = file_get_contents($_);
+                    $uri = $curl($_);
                 } else $uri = null;
                 if ($settings['decrypt'] and strtolower($method) != 'none') {
                     if (!$uri) {
