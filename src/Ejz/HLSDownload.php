@@ -4,16 +4,19 @@ namespace Ejz;
 
 class HLSDownload {
     const UA = "HLSDownload (github.com/Ejz/HLSDownload)";
+    const TMP_PREFIX = "HLSDownload";
     public static function go($url, $settings = array()) {
         $dir = isset($settings['dir']) ? $settings['dir'] : '.';
         $ua = isset($settings['ua']) ? $settings['ua'] : self::UA;
+        $tmp = isset($settings['tmp']) ? $settings['tmp'] : sys_get_temp_dir();
+        $tmp_prefix = isset($settings['tmp_prefix']) ? $settings['tmp_prefix'] : self::TMP_PREFIX;
         if (!is_dir($dir)) exec("mkdir -p " . escapeshellarg($dir));
         if (!is_dir($dir)) {
-            _log("INVALID DIR: {$dir}", E_USER_WARNING);
+            _warn("INVALID DIR: {$dir}");
             return false;
         }
         if (!is_writable($dir)) {
-            _log("DIRECTORY IS NOT WRITABLE: {$dir}", E_USER_WARNING);
+            _warn("DIRECTORY IS NOT WRITABLE: {$dir}");
             return false;
         }
         $dir = rtrim($dir, '/');
@@ -25,9 +28,11 @@ class HLSDownload {
             'stream' => null,
             'ts' => null,
             'key' => null,
+            'tmp' => $tmp,
+            'tmp_prefix' => $tmp_prefix,
             'continue' => (isset($settings['continue']) ? $settings['continue'] : false),
             'progress' => ((isset($settings['progress']) and is_callable($settings['progress'])) ? $settings['progress'] : null),
-            'limitRate' => (isset($settings['limitRate']) ? $settings['limitRate'] : null)
+            'limitRate' => (isset($settings['limitRate']) ? $settings['limitRate'] : null),
         ]);
     }
     private static function getProgressClosure($progress) {
@@ -48,6 +53,11 @@ class HLSDownload {
         };
     }
     private static function goBackend($url, $settings) {
+        $tmp = $settings['tmp'];
+        $tmp_prefix = $settings['tmp_prefix'];
+        $tmp =  sprintf("%s/%s", $settings['tmp'], $settings['tmp_prefix']);
+        if (!is_dir($tmp)) mkdir($tmp);
+        if (!is_dir($tmp)) _err("INVALID TMP DIR!");
         $dir = $settings['dir'];
         $stream = $settings['stream'];
         $ts = $settings['ts'];
@@ -58,23 +68,32 @@ class HLSDownload {
                 return realurl($link, $url);
             return '';
         };
-        $curl = array(
+        $curl_settings = array(
             CURLOPT_USERAGENT => $settings['ua'],
             CURLOPT_TIMEOUT => 120
         );
         if ($settings['progress']) {
-            $curl[CURLOPT_NOPROGRESS] = false;
-            $curl[CURLOPT_PROGRESSFUNCTION] = self::getProgressClosure($settings['progress']);
+            $curl_settings[CURLOPT_NOPROGRESS] = false;
+            $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressClosure($settings['progress']);
         }
         if ($settings['limitRate'] and preg_match('~^(\d+)\s*(k|m|g)$~i', $settings['limitRate'], $match)) {
             if (defined('CURLOPT_MAX_RECV_SPEED_LARGE')) {
                 $m = array('k' => pow(2, 10), 'm' => pow(2, 20), 'g' => pow(2, 30));
-                $curl[CURLOPT_MAX_RECV_SPEED_LARGE] = intval($match[1]) * $m[strtolower($match[2])];
+                $curl_settings[CURLOPT_MAX_RECV_SPEED_LARGE] = intval($match[1]) * $m[strtolower($match[2])];
             } else {
                 _log("CURLOPT_MAX_RECV_SPEED_LARGE IS NOT DEFINED!");
                 return false;
             }
         }
+        $curl = function ($link) use ($curl_settings, $tmp, $url) {
+            $file = $tmp . '/' . md5($link);
+            if (!is_file($file)) {
+                $content = curl($link, $curl_settings);
+                if (!$content) _err("ERROR WHILE TRYING TO FETCH: {$link}");
+                file_put_contents($file, $content);
+            }
+            return file_get_contents($file);
+        };
         if ($settings['continue'] and !is_null($ts)) {
             $d = $dir . sprintf("/ts%05s.ts", $ts);
             if (file_exists($d) and filesize($d) > 0) {
@@ -82,7 +101,7 @@ class HLSDownload {
                 return true;
             }
         }
-        if (host($url)) $content = curl($url, $curl);
+        if (host($url)) $content = $curl($url);
         elseif (is_file($url)) $content = file_get_contents($url);
         else $content = null;
         if (!$content) return false;
@@ -123,14 +142,13 @@ class HLSDownload {
                 $uri = $_uri = $extract('uri');
                 if ($uri and strpos($uri, $_ = 'data:text/plain;base64,') === 0)
                     $uri = base64_decode(substr($uri, strlen($_)));
-                elseif ($uri and $_ = $realurl($uri)) {
-                    if (host($_)) $uri = curl($_);
+                elseif ($uri and ($_ = $realurl($uri))) {
+                    if (host($_)) $uri = $curl($_);
                     else $uri = file_get_contents($_);
-                }
-                else $uri = null;
-                if ($settings['decrypt'] and strtolower($method) != 'none') {                    
+                } else $uri = null;
+                if ($settings['decrypt'] and strtolower($method) != 'none') {
                     if (!$uri) {
-                        _log("ERROR WHILE GETTING KEY: {$line}");
+                        _warn("ERROR WHILE GETTING KEY: {$line}");
                         return false;
                     }
                     $uri = bin2hex(trim($uri));
@@ -144,7 +162,7 @@ class HLSDownload {
                     $settings['key'] = null;
                 } elseif (!$settings['decrypt'] and strtolower($method) != 'none') {
                     if (!$uri) {
-                        _log("ERROR WHILE GETTING KEY: {$line}");
+                        _warn("ERROR WHILE GETTING KEY: {$line}");
                         return false;
                     }
                     if (!is_dir($d = $dir . '/keys')) mkdir($d);
@@ -183,7 +201,7 @@ class HLSDownload {
                 $line = $realurl($line);
                 $return = self::goBackend($line, ['ts' => $ts] + $settings);
                 if (!$return) {
-                    _log("ERROR WHILE PROCESSING: {$line}");
+                    _warn("ERROR WHILE PROCESSING: {$line}");
                     return false;
                 }
                 $collect[] = sprintf("ts%05s.ts", $ts);
@@ -194,14 +212,14 @@ class HLSDownload {
                     if (!is_dir($d = $dir . '/stream' . $stream)) mkdir($d);
                     $return = self::goBackend($line, ['stream' => $stream, 'dir' => $d] + $settings);
                     if (!$return) {
-                        _log("ERROR WHILE PROCESSING: {$line}");
+                        _warn("ERROR WHILE PROCESSING: {$line}");
                         return false;
                     }
                     $collect[] = "stream{$stream}/stream{$stream}.m3u8";
                 }
                 $ext_x_stream_inf = false;
             } else {
-                _log("PARSE ERROR: {$url}");
+                _warn("PARSE ERROR: {$url}");
                 return false;
             }
         }
@@ -226,8 +244,8 @@ class HLSDownload {
         if (!in_array(strtolower($method), array_map('strtolower', $methods)))
             return 'Unknown encryption method!';
         if (!is_file($chunk)) return 'Chunk file is NOT found!';
-        exec('which openssl && which file', $output, $return);
-        if ($return != '0') return "openssl or file is NOT found!";
+        exec('which openssl', $output, $return);
+        if ($return != '0') return "openssl is NOT found!";
         if (!$uri) return "Invalid URI!";
         if (!$iv) return "Invalid IV!";
         $tmp = rtrim(`mktemp`);
@@ -238,8 +256,8 @@ class HLSDownload {
             preg_replace('~^0x~', '', $iv),
             escapeshellarg($uri)
         ));
-        $_ = shell_exec("file 2>&1 " . escapeshellarg($tmp));
-        if (stripos($_, 'MPEG transport') !== false) {
+        $mpeg = file_get_contents($tmp);
+        if ($mpeg and $mpeg[0] === "G") { // sync flag
             unlink($chunk);
             rename($tmp, $chunk);
             return '';
