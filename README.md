@@ -9,7 +9,7 @@ Download and install the latest `hlsdownload.phar` (see [releases page](https://
 ```bash
 $ wget "https://ejz.ru/hlsdownload.phar"
 $ chmod +x hlsdownload.phar
-$ mv hlsdownload.phar /usr/local/bin/hlsdownload
+$ sudo mv hlsdownload.phar /usr/local/bin/hlsdownload
 ```
 
 Test it:
