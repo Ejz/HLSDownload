@@ -26,7 +26,7 @@ class HLSDownload {
             'filter' => (isset($settings['filter']) ? $settings['filter'] : null),
             'decrypt' => (isset($settings['decrypt']) ? $settings['decrypt'] : true),
             'stream' => null,
-            'ts' => null,
+            'tsname' => null,
             'key' => null,
             'tmp' => $tmp,
             'tmp_prefix' => $tmp_prefix,
@@ -60,10 +60,11 @@ class HLSDownload {
         if (!is_dir($tmp)) _err("INVALID TMP DIR!");
         $dir = $settings['dir'];
         $stream = $settings['stream'];
-        $ts = $settings['ts'];
+        $tsname = $settings['tsname'];
         $realurl = function ($link) use ($url) {
             if (is_file($url) and !host($link))
-                return preg_replace('~/[^/]+$~', '/', $url) . $link;
+                if (strpos($url, '/') === false) return $link;
+                else return preg_replace('~/[^/]+$~', '/', $url) . $link;
             elseif (host($link) or host($url))
                 return realurl($link, $url);
             return '';
@@ -100,18 +101,18 @@ class HLSDownload {
             }
             return file_get_contents($file);
         };
-        if ($settings['continue'] and !is_null($ts)) {
-            $d = $dir . sprintf("/ts%05s.ts", $ts);
+        if ($settings['continue'] and $tsname) {
+            $d = $dir . '/' . $tsname;
             if (file_exists($d) and filesize($d) > 0) {
                 _log("{$url} -> {$d} (ALREADY)");
                 return true;
             }
         }
         $content = $curl($url);
-        if (strpos($content, '#EXTM3U') !== 0 and is_null($ts))
-            return null;
-        if (strpos($content, '#EXTM3U') !== 0) {
-            $d = (is_null($ts) ? $dir . '/ts.ts' : $dir . sprintf("/ts%05s.ts", $ts));
+        // либо манифест, либо тска прямой ссылкой, либо тска обычная, либо закриптованная тска
+        $isManifest = (strpos($content, '#EXTM3U') === 0);
+        if (!$isManifest) {
+            $d = ($tsname ? $dir . '/' . $tsname : $dir . '/ts.ts');
             _log("{$url} -> {$d}");
             $_ = file_put_contents($d, $content);
             if (!$settings['key'] or !$_) return $_ > 0;
@@ -129,6 +130,7 @@ class HLSDownload {
         $ext_x_stream_inf = false;
         $filter = self::prepareFilter($settings['filter'], $content);
         $settings['key'] = null;
+        $tscount = -1;
         foreach (nsplit($content) as $line) {
             if (strpos($line, $str = '#EXT-X-KEY:') === 0) {
                 $_line = substr($line, strlen($str));
@@ -182,7 +184,7 @@ class HLSDownload {
             if (strpos($line, '#EXTINF:') === 0) {
                 $collect[] = $line;
                 $extinf = true;
-                $ts = is_null($ts) ? 0 : $ts + 1;
+                $tscount += 1;
                 continue;
             }
             if (strpos($line, '#EXT-X-STREAM-INF:') === 0) {
@@ -201,12 +203,13 @@ class HLSDownload {
             }
             if ($extinf) {
                 $line = $realurl($line);
-                $return = self::goBackend($line, ['ts' => $ts] + $settings);
+                $tsname = sprintf("ts%05s.ts", $tscount);
+                $return = self::goBackend($line, ['tsname' => $tsname] + $settings);
                 if (!$return) {
                     _warn("ERROR WHILE PROCESSING: {$line}");
                     return false;
                 }
-                $collect[] = sprintf("ts%05s.ts", $ts);
+                $collect[] = $tsname;
                 $extinf = false;
             } elseif ($ext_x_stream_inf) {
                 if (is_null($filter) or in_array($stream, $filter)) {
