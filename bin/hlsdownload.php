@@ -48,7 +48,7 @@ exit(1);
 help:
 
 ob_start();
-echo "HLSDownload 1.4 by Ejz Cernisev.
+echo "HLSDownload 1.4.1 by Ejz Cernisev.
 
 Usage: hlsdownload [options] <M3U8>
 
