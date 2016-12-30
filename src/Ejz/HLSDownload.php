@@ -10,6 +10,8 @@ class HLSDownload {
         $ua = isset($settings['ua']) ? $settings['ua'] : self::UA;
         $tmp = isset($settings['tmp']) ? $settings['tmp'] : sys_get_temp_dir();
         $tmp_prefix = isset($settings['tmp_prefix']) ? $settings['tmp_prefix'] : self::TMP_PREFIX;
+        $headers = isset($settings['headers']) ? $settings['headers'] : array();
+        if ($headers and is_string($headers)) $headers = array($headers);
         if (!is_dir($dir)) exec("mkdir -p " . escapeshellarg($dir));
         if (!is_dir($dir)) {
             _warn("INVALID DIR: {$dir}");
@@ -29,6 +31,7 @@ class HLSDownload {
             'tsname' => null,
             'key' => null,
             'tmp' => $tmp,
+            'headers' => $headers,
             'tmp_prefix' => $tmp_prefix,
             'continue' => (isset($settings['continue']) ? $settings['continue'] : false),
             'progress' => ((isset($settings['progress']) and is_callable($settings['progress'])) ? $settings['progress'] : null),
@@ -76,6 +79,9 @@ class HLSDownload {
         if ($settings['progress']) {
             $curl_settings[CURLOPT_NOPROGRESS] = false;
             $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressClosure($settings['progress']);
+        }
+        if ($settings['headers'] and is_array($settings['headers'])) {
+            $curl_settings[CURLOPT_HTTPHEADER] = $settings['headers'];
         }
         if ($settings['limitRate'] and preg_match('~^(\d+)\s*(k|m|g)$~i', $settings['limitRate'], $match)) {
             if (defined('CURLOPT_MAX_RECV_SPEED_LARGE')) {
