@@ -161,7 +161,7 @@ class HLSDownload {
                         _warn("ERROR WHILE GETTING KEY: {$line}");
                         return false;
                     }
-                    $uri = bin2hex(trim($uri));
+                    $uri = bin2hex($uri);
                     $settings['key'] = array(
                         'method' => $method,
                         'uri' => $uri,
