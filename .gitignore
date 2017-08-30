@@ -1,3 +1,14 @@
-/vendor
-composer.phar
 composer.lock
+vendor
+old
+composer.phar
+phpunit.phar
+local.ini
+/vars/*
+/www/captcha/*
+/www/css/*.css
+/www/css/*.css.map
+/www/css/sass.log
+/www/css/sass.pid
+*.sublime-project
+*.sublime-workspace
