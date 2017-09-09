@@ -48,7 +48,7 @@ $ hlsdownload -d /tmp --limit-rate 100k "http://content.jwplatform.com/manifests
 
 ### Authors
 
-- [Evgeny Cernisev](http://ejz.ru) | [GitHub](https://github.com/Ejz) | <ejz@ya.ru>
+- [Evgeny Cernisev](https://ejz.ru) | [GitHub](https://github.com/Ejz) | <ejz@ya.ru>
 
 ### License
 
