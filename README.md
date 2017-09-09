@@ -20,7 +20,7 @@ $ hlsdownload "http://content.jwplatform.com/manifests/nJEIV3eJ.m3u8"
 
 ### Requirements
 
-PHP 5.5 or above (with cURL library installed).
+PHP 5.6 or above (with cURL library installed).
 
 ### Usage
 
@@ -48,7 +48,7 @@ $ hlsdownload -d /tmp --limit-rate 100k "http://content.jwplatform.com/manifests
 
 ### Authors
 
-- [Ejz Cernisev](http://ejz.ru)  | [GitHub](https://github.com/Ejz) | <ejz@ya.ru>
+- [Evgeny Cernisev](http://ejz.ru) | [GitHub](https://github.com/Ejz) | <ejz@ya.ru>
 
 ### License
 
