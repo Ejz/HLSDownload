@@ -7,20 +7,22 @@ if [ ! -f "composer.phar" ]; then
     echo "Installing Composer .."
     curl -sS 'https://getcomposer.org/installer' | php
     chmod a+x composer.phar
-    [ "$EUID" -eq "0" ] && cp composer.phar /usr/local/bin/composer
+    if [ "$EUID" -eq "0" ]; then
+        echo "Moving to /usr/local/bin .."
+        cp composer.phar /usr/local/bin/composer
+    fi
 fi
 
 # Install PHPUnit
 if [ ! -f "phpunit.phar" ]; then
     echo "Installing PHPUnit .."
-    ver="3.7"
-    php_ver=`php -v | head -1 | cut -d" " -f2`
-    if [ "$php_ver" = "`echo -e "${php_ver}\n5.6" | sort -rV | head -n1`" ]; then
-        ver="5.7"
-    fi
+    ver="5.7"
     wget "https://phar.phpunit.de/phpunit-${ver}.phar" -O phpunit.phar
     chmod a+x phpunit.phar
-    [ "$EUID" -eq "0" ] && cp phpunit.phar /usr/local/bin/phpunit
+    if [ "$EUID" -eq "0" ]; then
+        echo "Moving to /usr/local/bin .."
+        cp phpunit.phar /usr/local/bin/phpunit
+    fi
 fi
 
 # Composer install/update

@@ -4,201 +4,191 @@ namespace Ejz;
 
 class HLSDownload {
     const UA = "HLSDownload (github.com/Ejz/HLSDownload)";
-    const TMP_PREFIX = "HLSDownload";
-    public static function go($url, $settings = array()) {
-        $dir = isset($settings['dir']) ? $settings['dir'] : '.';
-        $ua = isset($settings['ua']) ? $settings['ua'] : self::UA;
-        $tmp = isset($settings['tmp']) ? $settings['tmp'] : sys_get_temp_dir();
-        $tmp_prefix = isset($settings['tmp_prefix']) ? $settings['tmp_prefix'] : self::TMP_PREFIX;
-        $headers = isset($settings['headers']) ? $settings['headers'] : array();
-        if ($headers and is_string($headers)) $headers = array($headers);
-        if (!is_dir($dir)) exec("mkdir -p " . escapeshellarg($dir));
-        if (!is_dir($dir)) {
-            _warn("INVALID DIR: {$dir}");
-            return false;
-        }
-        if (!is_writable($dir)) {
-            _warn("DIRECTORY IS NOT WRITABLE: {$dir}");
-            return false;
-        }
-        $dir = rtrim($dir, '/');
-        return self::goBackend((is_file($url) ? $url : realurl($url)), [
-            'dir' => $dir,
-            'ua' => $ua,
-            'filter' => (isset($settings['filter']) ? $settings['filter'] : null),
-            'decrypt' => (isset($settings['decrypt']) ? $settings['decrypt'] : true),
-            'stream' => null,
-            'tsname' => null,
+    const CACHE = "cache";
+    public static function go($link, $settings = []) {
+        $settings = $settings + [
+            'dir' => '.',
+            'ua' => self::UA,
+            'cache' => self::CACHE,
+            'tmp' => sys_get_temp_dir(),
+            'decrypt' => true,
+            'progress' => false,
             'key' => null,
-            'tmp' => $tmp,
-            'headers' => $headers,
-            'tmp_prefix' => $tmp_prefix,
-            'continue' => (isset($settings['continue']) ? $settings['continue'] : false),
-            'progress' => ((isset($settings['progress']) and is_callable($settings['progress'])) ? $settings['progress'] : null),
-            'limitRate' => (isset($settings['limitRate']) ? $settings['limitRate'] : null),
-        ]);
+            'clear_cache' => true,
+        ];
+        $dir = & $settings['dir'];
+        if (!is_dir($dir)) @ mkdir($dir, $mode = 0755, $recursive = true);
+        if (!is_dir($dir) or !is_writable($dir))
+            return _warn(__CLASS__ . ": Invalid directory: {$dir}");
+        $settings['cache'] = '/' . trim($settings['cache'], '/');
+        $dir = rtrim($dir, '/');
+        return self::backend($link, $settings);
     }
-    private static function getProgressClosure($progress) {
-        return function ($ch, $total, $download) use ($progress) {
-            static $last = null;
-            static $done = false;
-            if (!$total) return;
-            $percent = round((100 * $download) / $total);
-            if ($percent < 0) $percent = 0;
-            if ($percent > 100) $percent = 100;
-            if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent != 100) return;
-            $last = microtime(true);
-            $info = curl_getinfo($ch);
-            $url = $info['url'];
-            if ($done) return;
-            if ($percent == 100) $done = true;
-            $progress($url, $percent);
-        };
-    }
-    private static function goBackend($url, $settings) {
-        $tmp = $settings['tmp'];
-        $tmp_prefix = $settings['tmp_prefix'];
-        $tmp =  sprintf("%s/%s", $settings['tmp'], $settings['tmp_prefix']);
-        if (!is_dir($tmp)) mkdir($tmp);
-        if (!is_dir($tmp)) _err("INVALID TMP DIR!");
-        $dir = $settings['dir'];
-        $stream = $settings['stream'];
-        $tsname = $settings['tsname'];
-        $realurl = function ($link) use ($url) {
-            if (is_file($url) and !host($link))
-                if (strpos($url, '/') === false) return $link;
-                else return preg_replace('~/[^/]+$~', '/', $url) . $link;
-            elseif (host($link) or host($url))
-                return realurl($link, $url);
-            return '';
-        };
-        $curl_settings = array(
+    // private static function getProgressClosure($progress) {
+    //     return function ($ch, $total, $download) use ($progress) {
+    //         static $last = null;
+    //         static $done = false;
+    //         if (!$total) return;
+    //         $percent = round((100 * $download) / $total);
+    //         if ($percent < 0) $percent = 0;
+    //         if ($percent > 100) $percent = 100;
+    //         if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent != 100) return;
+    //         $last = microtime(true);
+    //         $info = curl_getinfo($ch);
+    //         $url = $info['url'];
+    //         if ($done) return;
+    //         if ($percent == 100) $done = true;
+    //         $progress($url, $percent);
+    //     };
+    // }
+    private static function backend($link, $settings) {
+        var_dump("link " . $link);
+        $link = (is_file($link) ? $link : realurl($link));
+        $dir = & $settings['dir'];
+        @ $manifest_name = $settings['manifest_name'];
+        if (!$manifest_name) $manifest_name = 'manifest.m3u8';
+        @ $stream_name = $settings['stream_name'];
+        if (!$stream_name) $stream_name = 'stream.m3u8';
+        @ $ts_name = $settings['ts_name'];
+        if (!$ts_name) $ts_name = 'chunk.ts';
+        // $tmp = $settings['tmp'];
+        // $tmp_prefix = $settings['tmp_prefix'];
+        // $tmp =  sprintf("%s/%s", $settings['tmp'], $settings['tmp_prefix']);
+        // if (!is_dir($tmp)) mkdir($tmp);
+        // if (!is_dir($tmp)) _err("INVALID TMP DIR!");
+        // $stream = $settings['stream'];
+        // $tsname = $settings['tsname'];
+        // $realurl = function ($link) use ($url) {
+        //     if (is_file($url) and !host($link))
+        //         if (strpos($url, '/') === false) return $link;
+        //         else return preg_replace('~/[^/]+$~', '/', $url) . $link;
+        //     elseif (host($link) or host($url))
+        //         return realurl($link, $url);
+        //     return '';
+        // };
+        $curl_settings = [
             CURLOPT_USERAGENT => $settings['ua'],
-            CURLOPT_TIMEOUT => 120
-        );
+            CURLOPT_TIMEOUT => 120,
+        ];
         if ($settings['progress']) {
             $curl_settings[CURLOPT_NOPROGRESS] = false;
-            $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressClosure($settings['progress']);
+            // $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressClosure($settings['progress']);
         }
-        if ($settings['headers'] and is_array($settings['headers'])) {
-            $curl_settings[CURLOPT_HTTPHEADER] = $settings['headers'];
-        }
-        if ($settings['limitRate'] and preg_match('~^(\d+)\s*(k|m|g)$~i', $settings['limitRate'], $match)) {
+        // if ($settings['headers'] and is_array($settings['headers'])) {
+        //     $curl_settings[CURLOPT_HTTPHEADER] = $settings['headers'];
+        // }
+        if (preg_match('~^(\d+)\s*(k|m|g)$~i', @ $settings['limit_rate'], $match)) {
             if (defined('CURLOPT_MAX_RECV_SPEED_LARGE')) {
                 $m = array('k' => pow(2, 10), 'm' => pow(2, 20), 'g' => pow(2, 30));
                 $curl_settings[CURLOPT_MAX_RECV_SPEED_LARGE] = intval($match[1]) * $m[strtolower($match[2])];
-            } else {
-                _log("CURLOPT_MAX_RECV_SPEED_LARGE IS NOT DEFINED!");
-                return false;
-            }
+            } else return _log(__CLASS__ . ": CURLOPT_MAX_RECV_SPEED_LARGE is not defined!");
         }
-        $curl = function ($link) use ($curl_settings, $tmp) {
-            $err = "ERROR WHILE TRYING TO FETCH: {$link}";
-            if (!host($link) and is_file($link)) {
-                $content = file_get_contents($link);
-                if (!$content) _err($err);
-                return $content;
-            }
-            $file = $tmp . '/' . md5($link);
+        $cache = $dir . $settings['cache'];
+        @ mkdir($cache, $mode = 0755, $recursive = true);
+        $getter = function ($link) use ($curl_settings, $cache) {
+            if (!host($link) and is_file($link))
+                return file_get_contents($link);
+            $file = $cache . '/' . md5($link);
             if (!is_file($file)) {
                 $content = curl($link, $curl_settings);
-                if (!$content) _err($err);
+                if (!$content) return _warn("Error while getting {$link}");
                 file_put_contents($file, $content);
             }
             return file_get_contents($file);
         };
-        if ($settings['continue'] and $tsname) {
-            $d = $dir . '/' . $tsname;
-            if (file_exists($d) and filesize($d) > 0) {
-                _log("{$url} -> {$d} (ALREADY)");
-                return true;
-            }
-        }
-        $content = $curl($url);
-        // либо манифест, либо тска прямой ссылкой, либо тска обычная, либо закриптованная тска
-        $isManifest = (strpos($content, '#EXTM3U') === 0);
-        if (!$isManifest) {
-            $d = ($tsname ? $dir . '/' . $tsname : $dir . '/ts.ts');
-            _log("{$url} -> {$d}");
-            $_ = file_put_contents($d, $content);
+        // if ($settings['continue'] and $tsname) {
+        //     $d = $dir . '/' . $tsname;
+        //     if (file_exists($d) and filesize($d) > 0) {
+        //         _log("{$url} -> {$d} (ALREADY)");
+        //         return true;
+        //     }
+        // }
+        $content = $getter($link);
+        if (!$content) return;
+        // either manifest or ts
+        $is_manifest = (strpos($content, '#EXTM3U') === 0);
+        $is_ts = !$is_manifest;
+        if ($is_ts) {
+            $target = $dir . '/' . $ts_name;
+            echo "{$link} -> {$target}\n";
+            $_ = file_put_contents($target, $content);
             if (!$settings['key'] or !$_) return $_ > 0;
-            rename($d, $dd = $d . '.tmp');
-            $error = self::decryptChunk($dd, $settings['key']);
-            if ($error) {
-                _log("ERROR WHILE DECRYPTING: {$error}");
-                return false;
-            }
-            rename($dd, $d);
-            return true;
+            rename($target, $target = $target . '.tmp');
+            $error = self::decrypt($target, $settings['key']);
+            if ($error)
+                return _warn("Error while decrypting {$link}; {$error}");
+            return rename($target, substr($target, 0, -4));
         }
-        $collect = array();
+        $collect = [];
         $extinf = false;
         $ext_x_stream_inf = false;
-        $filter = self::prepareFilter($settings['filter'], $content);
+        // $filter = self::filter($settings['filter'], $content);
         $settings['key'] = null;
-        $tscount = -1;
+        $ts_count = -1;
+        $stream_count = -1;
         foreach (nsplit($content) as $line) {
-            if (strpos($line, $str = '#EXT-X-KEY:') === 0) {
-                $_line = substr($line, strlen($str));
-                $extract = function ($key) use ($_line) {
-                    preg_match($r = '~(^|,)' . $key . '="([^"]*)"(,|$)~i', $_line, $match1);
-                    preg_match($r = '~(^|,)' . $key . '=(.*?)(,|$)~i', $_line, $match2);
-                    $match = $match1 ?: $match2;
-                    if (!$match) return null;
-                    $match = $match[2];
-                    $match = trim($match, '"');
-                    return $match;
-                };
-                $method = $extract('method');
-                $uri = $_uri = $extract('uri');
-                if ($uri and strpos($uri, $_ = 'data:text/plain;base64,') === 0)
-                    $uri = base64_decode(substr($uri, strlen($_)));
-                elseif ($uri and ($_ = $realurl($uri))) {
-                    $uri = $curl($_);
-                } else $uri = null;
-                if ($settings['decrypt'] and strtolower($method) != 'none') {
-                    if (!$uri) {
-                        _warn("ERROR WHILE GETTING KEY: {$line}");
-                        return false;
-                    }
-                    $uri = bin2hex($uri);
-                    $settings['key'] = array(
-                        'method' => $method,
-                        'uri' => $uri,
-                        'iv' => $extract('iv'),
-                        'keyformat' => $extract('keyformat'),
-                    );
-                } elseif ($settings['decrypt'] and strtolower($method) == 'none') {
-                    $settings['key'] = null;
-                } elseif (!$settings['decrypt'] and strtolower($method) != 'none') {
-                    if (!$uri) {
-                        _warn("ERROR WHILE GETTING KEY: {$line}");
-                        return false;
-                    }
-                    if (!is_dir($d = $dir . '/keys')) mkdir($d);
-                    $i = 0;
-                    while (file_exists($file = $d . '/key' . $i) and md5_file($file) != md5($uri))
-                        $i++;
-                    _log("SAVE KEY: {$_uri} -> {$file}");
-                    file_put_contents($file, $uri);
-                    $collect[] = str_replace_once($extract('uri'), 'keys/key' . $i, $line);
-                } else {
-                    $collect[] = $line;
-                }
-                continue;
-            }
+            // if (strpos($line, $str = '#EXT-X-KEY:') === 0) {
+            //     $_line = substr($line, strlen($str));
+            //     $extract = function ($key) use ($_line) {
+            //         preg_match($r = '~(^|,)' . $key . '="([^"]*)"(,|$)~i', $_line, $match1);
+            //         preg_match($r = '~(^|,)' . $key . '=(.*?)(,|$)~i', $_line, $match2);
+            //         $match = $match1 ?: $match2;
+            //         if (!$match) return null;
+            //         $match = $match[2];
+            //         $match = trim($match, '"');
+            //         return $match;
+            //     };
+            //     $method = $extract('method');
+            //     $uri = $_uri = $extract('uri');
+            //     if ($uri and strpos($uri, $_ = 'data:text/plain;base64,') === 0)
+            //         $uri = base64_decode(substr($uri, strlen($_)));
+            //     elseif ($uri and ($_ = $realurl($uri))) {
+            //         $uri = $curl($_);
+            //     } else $uri = null;
+            //     if ($settings['decrypt'] and strtolower($method) != 'none') {
+            //         if (!$uri) {
+            //             _warn("ERROR WHILE GETTING KEY: {$line}");
+            //             return false;
+            //         }
+            //         $uri = bin2hex($uri);
+            //         $settings['key'] = array(
+            //             'method' => $method,
+            //             'uri' => $uri,
+            //             'iv' => $extract('iv'),
+            //             'keyformat' => $extract('keyformat'),
+            //         );
+            //     } elseif ($settings['decrypt'] and strtolower($method) == 'none') {
+            //         $settings['key'] = null;
+            //     } elseif (!$settings['decrypt'] and strtolower($method) != 'none') {
+            //         if (!$uri) {
+            //             _warn("ERROR WHILE GETTING KEY: {$line}");
+            //             return false;
+            //         }
+            //         if (!is_dir($d = $dir . '/keys')) mkdir($d);
+            //         $i = 0;
+            //         while (file_exists($file = $d . '/key' . $i) and md5_file($file) != md5($uri))
+            //             $i++;
+            //         _log("SAVE KEY: {$_uri} -> {$file}");
+            //         file_put_contents($file, $uri);
+            //         $collect[] = str_replace_once($extract('uri'), 'keys/key' . $i, $line);
+            //     } else {
+            //         $collect[] = $line;
+            //     }
+            //     continue;
+            // }
             if (strpos($line, '#EXTINF:') === 0) {
                 $collect[] = $line;
                 $extinf = true;
-                $tscount += 1;
+                $ts_count += 1;
                 continue;
             }
             if (strpos($line, '#EXT-X-STREAM-INF:') === 0) {
                 $ext_x_stream_inf = true;
-                $stream = is_null($stream) ? 0 : $stream + 1;
-                if (is_null($filter) or in_array($stream, $filter)) {
-                    $collect[] = $line;
-                }
+                $stream_count += 1;
+                // $stream = is_null($stream) ? 0 : $stream + 1;
+                $collect[] = $line;
+                // if (is_null($filter) or in_array($stream, $filter)) {
+                // }
                 continue;
             }
             if (strpos($line, '#') === 0) {
@@ -208,46 +198,52 @@ class HLSDownload {
                 continue;
             }
             if ($extinf) {
-                $line = $realurl($line);
-                $tsname = sprintf("ts%05s.ts", $tscount);
-                $return = self::goBackend($line, ['tsname' => $tsname] + $settings);
-                if (!$return) {
-                    _warn("ERROR WHILE PROCESSING: {$line}");
-                    return false;
-                }
-                $collect[] = $tsname;
+                // if (!is_file($link))
+                $line = realurl($line, $link);
+                $ts_name = sprintf("chunk%05s.ts", $ts_count);
+                $return = self::backend(
+                    $line, ['ts_name' => $ts_name] + $settings
+                );
+                $collect[] = $ts_name;
                 $extinf = false;
-            } elseif ($ext_x_stream_inf) {
-                if (is_null($filter) or in_array($stream, $filter)) {
-                    $line = $realurl($line);
-                    if (!is_dir($d = $dir . '/stream' . $stream)) mkdir($d);
-                    $return = self::goBackend($line, ['stream' => $stream, 'dir' => $d] + $settings);
-                    if (!$return) {
-                        _warn("ERROR WHILE PROCESSING: {$line}");
-                        return false;
-                    }
-                    $collect[] = "stream{$stream}/stream{$stream}.m3u8";
-                }
-                $ext_x_stream_inf = false;
-            } else {
-                _warn("PARSE ERROR: {$url}");
-                return false;
+                continue;
             }
+            if ($ext_x_stream_inf) {
+                // if (is_null($filter) or in_array($stream, $filter)) {
+                $line = realurl($line, $link);
+                $stream_name = sprintf("stream%s/stream%s.m3u8", $stream_count, $stream_count);
+                $new_dir = $dir . '/' . dirname($stream_name);
+                if (!is_dir($new_dir)) @ mkdir($new_dir, $mode = 0755, $recursive = true);
+                $return = self::backend(
+                    $line, [
+                        'stream_name' => basename($stream_name),
+                        'dir' => $new_dir,
+                    ] + $settings
+                );
+                $collect[] = $stream_name;
+                // }
+                $ext_x_stream_inf = false;
+                continue;
+            }
+            _warn("Parse error in {$link}; Line: {$line}");
         }
-        $stream = $settings['stream'];
+        if ($extinf or $ext_x_stream_inf)
+            _warn("Invalid M3U8 ending at {$link}");
         $collect = implode("\n", $collect) . "\n";
-        if (is_null($stream) and strpos($collect, "\n#EXT-X-STREAM-INF:") === false)
-            $d = $dir . '/stream0.m3u8';
-        elseif (is_null($stream))
-            $d = $dir . '/hls.m3u8';
-        else $d = $dir . "/stream{$stream}.m3u8";
-        _log("{$url} -> {$d}");
-        return file_put_contents(
-            $d,
-            $collect
-        ) > 0;
+        $is_master = (strpos($collect, "\n#EXT-X-STREAM-INF:") !== false);
+        $target = $dir . '/' . ($is_master ? $manifest_name : $stream_name);
+        echo "{$link} -> {$target}\n";
+        if ($settings['clear_cache']) {
+            $files = scandir($cache);
+            foreach ($files as $file) {
+                if ($file === '.' or $file === '..') continue;
+                unlink($cache . '/' . $file);
+            }
+            rmdir($cache);
+        }
+        return file_put_contents($target, $collect) > 0;
     }
-    private static function decryptChunk($chunk, $key) {
+    private static function decrypt($chunk, $key) {
         @ $method = $key['method'];
         @ $uri = $key['uri'];
         @ $iv = $key['iv'];
@@ -277,7 +273,7 @@ class HLSDownload {
             return 'Error while decoding!';
         }
     }
-    private static function prepareFilter($filter, $content) {
+    private static function filter($filter, $content) {
         if (is_null($filter)) return $filter;
         if (is_string($filter)) $filter = explode(',', $filter);
         $streams = array();

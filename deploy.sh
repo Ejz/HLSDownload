@@ -6,19 +6,15 @@ cd "$this_dir"
 prefix=`basename "$this_dir"`
 prefix=`echo "$prefix" | awk '{print tolower($0)}'`
 defaults=""
-phpunit=""
 login=""
 test=""
-if [ "$1" == "-D" -o "$2" == "-D" -o "$3" == "-D" -o "$4" == "-D" ]; then
+if [ "$1" == "-D" -o "$2" == "-D" -o "$3" == "-D" ]; then
     defaults="yes"
 fi
-if [ "$1" == "-P" -o "$2" == "-P" -o "$3" == "-P" -o "$4" == "-P" ]; then
-    phpunit="yes"
-fi
-if [ "$1" == "-L" -o "$2" == "-L" -o "$3" == "-L" -o "$4" == "-L" ]; then
+if [ "$1" == "-L" -o "$2" == "-L" -o "$3" == "-L" ]; then
     login="yes"
 fi
-if [ "$1" == "-T" -o "$2" == "-T" -o "$3" == "-T" -o "$4" == "-T" ]; then
+if [ "$1" == "-T" -o "$2" == "-T" -o "$3" == "-T" ]; then
     test="yes"
 fi
 
@@ -148,8 +144,4 @@ if [ "$SQL_HOST" != "no" ]; then
     $EXEC php "$CGI"/bootstrap.php ini_file_set LOCAL_INI sql.user "$SQL_USER"
     $EXEC php "$CGI"/bootstrap.php ini_file_set LOCAL_INI sql.pass "$SQL_PASS"
     $EXEC php "$CGI"/bootstrap.php ini_file_set LOCAL_INI sql.db "$SQL_DB"
-fi
-
-if [ "$phpunit" ]; then
-    $EXEC php "$BASE"/phpunit.phar -c /var/www/"$HOST"/phpunit.xml
 fi

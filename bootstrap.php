@@ -95,7 +95,9 @@ function getRequest() {
 //     Constants     //
 // ----------------- //
 
-define('WWW_ROOT', ROOT . '/../www');
+if (is_dir($_ = ROOT . '/../www'))
+    define('WWW_ROOT', $_);
+else define('WWW_ROOT', ROOT . '/www');
 define('LOGS_ROOT', ROOT . '/logs');
 define('TPL_ROOT', ROOT . '/tpl');
 define('PAGE_ROOT', ROOT . '/page');
