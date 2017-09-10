@@ -15,6 +15,7 @@ class HLSDownload {
             'progress' => false,
             'key' => null,
             'clear_cache' => true,
+            'filter' => null,
         ];
         $dir = & $settings['dir'];
         if (!is_dir($dir)) @ mkdir($dir, $mode = 0755, $recursive = true);
@@ -42,7 +43,6 @@ class HLSDownload {
     //     };
     // }
     private static function backend($link, $settings) {
-        var_dump("link " . $link);
         $link = (is_file($link) ? $link : realurl($link));
         $dir = & $settings['dir'];
         @ $manifest_name = $settings['manifest_name'];
@@ -122,7 +122,7 @@ class HLSDownload {
         $collect = [];
         $extinf = false;
         $ext_x_stream_inf = false;
-        // $filter = self::filter($settings['filter'], $content);
+        $filter = self::filter($settings['filter'], $content);
         $settings['key'] = null;
         $ts_count = -1;
         $stream_count = -1;
@@ -185,10 +185,8 @@ class HLSDownload {
             if (strpos($line, '#EXT-X-STREAM-INF:') === 0) {
                 $ext_x_stream_inf = true;
                 $stream_count += 1;
-                // $stream = is_null($stream) ? 0 : $stream + 1;
-                $collect[] = $line;
-                // if (is_null($filter) or in_array($stream, $filter)) {
-                // }
+                if (is_null($filter) or in_array($stream_count, $filter, true))
+                    $collect[] = $line;
                 continue;
             }
             if (strpos($line, '#') === 0) {
@@ -209,19 +207,19 @@ class HLSDownload {
                 continue;
             }
             if ($ext_x_stream_inf) {
-                // if (is_null($filter) or in_array($stream, $filter)) {
-                $line = realurl($line, $link);
-                $stream_name = sprintf("stream%s/stream%s.m3u8", $stream_count, $stream_count);
-                $new_dir = $dir . '/' . dirname($stream_name);
-                if (!is_dir($new_dir)) @ mkdir($new_dir, $mode = 0755, $recursive = true);
-                $return = self::backend(
-                    $line, [
-                        'stream_name' => basename($stream_name),
-                        'dir' => $new_dir,
-                    ] + $settings
-                );
-                $collect[] = $stream_name;
-                // }
+                if (is_null($filter) or in_array($stream_count, $filter)) {
+                    $line = realurl($line, $link);
+                    $stream_name = sprintf("stream%s/stream%s.m3u8", $stream_count, $stream_count);
+                    $new_dir = $dir . '/' . dirname($stream_name);
+                    if (!is_dir($new_dir)) @ mkdir($new_dir, $mode = 0755, $recursive = true);
+                    $return = self::backend(
+                        $line, [
+                            'stream_name' => basename($stream_name),
+                            'dir' => $new_dir,
+                        ] + $settings
+                    );
+                    $collect[] = $stream_name;
+                }
                 $ext_x_stream_inf = false;
                 continue;
             }
@@ -275,11 +273,12 @@ class HLSDownload {
     }
     private static function filter($filter, $content) {
         if (is_null($filter)) return $filter;
-        if (is_string($filter)) $filter = explode(',', $filter);
+        if (is_string($filter . '')) $filter = explode(',', $filter . '');
         $streams = array();
         $lines = nsplit($content);
         for ($i = 0; $i < count($lines) - 1; $i++) {
             $line = $lines[$i];
+            // var_dump($line);
             if (strpos($line, $_ = '#EXT-X-STREAM-INF:') !== 0) continue;
             $line = substr($line, strlen($_));
             $keys = explode(',', $line);
@@ -287,34 +286,48 @@ class HLSDownload {
             foreach ($keys as $key) {
                 $key = explode('=', $key, 2);
                 if (count($key) != 2) continue;
-                $info[strtolower($key[0])] = $key[1];
+                list($key, $value) = $key;
+                $key = trim(strtolower($key));
+                $value = trim($value, ' "\'');
+                $info[$key] = $value;
             }
             $streams[] = $info;
         }
+        // var_dump($streams);
         if (!$streams) return null;
         $return = array();
-        foreach ($filter as $f)
-            if (is_numeric($f) and intval($f) >= 0)
-                $return[] = $f;
-            elseif (is_numeric($f) and intval($f) < 0)
-                $return[] = count($streams) + intval($f);
-            elseif (preg_match("~(.*)(=|<|>|<=|>=)(.*)~", $f, $m)) {
-                if ($m[2] === "=" and is_numeric($m[3])) {
-                    $sort = array_column($streams, strtolower($m[1]));
-                    $_ = array_search($m[3], $sort, $strict = false);
-                    if (is_numeric($_)) $return[] = $_;
-                } elseif ($m[2] === "=" and strtolower($m[3]) === "min") {
-                    $sort = array_column($streams, strtolower($m[1]));
-                    asort($sort);
-                    list($key) = array_keys($sort);
-                    $return[] = $key;
-                } elseif ($m[2] === "=" and strtolower($m[3]) === "max") {
-                    $sort = array_column($streams, strtolower($m[1]));
-                    arsort($sort);
-                    list($key) = array_keys($sort);
-                    $return[] = $key;
-                }
+        $search = function ($value, $sort, $negate, $op) {
+            $col = [];
+            foreach ($sort as $k => $v) {
+                if (
+                    ($op == '=' and (fnmatch($value, $v) xor $negate))
+                        or
+                    ($op != '=' and (version_compare($v, $value, $op) xor $negate))
+                ) $col[] = $k;
             }
-        return $return;
+            return $col;
+        };
+        foreach ((array)($filter) as $f) {
+            if (is_numeric($f)) {
+                $f = intval($f);
+                $return[] = ($f < 0 ? count($streams) : 0) + $f;
+                continue;
+            }
+            preg_match("~([a-zA-Z0-9_-]+)(\!?)(=|<=?|>=?)(.*)~", $f, $m);
+            $f = strtolower($m[1]);
+            $sort = array_column($streams, $f);
+            $negate = !!$m[2];
+            $operation = $m[3];
+            $value = $m[4];
+            $v = strtolower($value);
+            if ($v === 'min' or $v === 'max') {
+                $f = ($v === 'min' ? 'asort' : 'arsort');
+                $f($sort);
+                list($value) = array_values($sort);
+            }
+            $res = $search($value, $sort, $negate, $operation);
+            $return = array_merge($return, $res);
+        }
+        return array_unique($return);
     }
 }
