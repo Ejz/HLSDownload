@@ -15,12 +15,14 @@ class HLSDownload {
             'progress' => false,
             'key' => null,
             'clear_cache' => true,
-            'filter' => null,
+            'filters' => [],
         ];
         $dir = & $settings['dir'];
         if (!is_dir($dir)) @ mkdir($dir, $mode = 0755, $recursive = true);
         if (!is_dir($dir) or !is_writable($dir))
             return _warn(__CLASS__ . ": Invalid directory: {$dir}");
+        if (!is_array($settings['filters']))
+            $settings['filters'] = [$settings['filters']];
         $settings['cache'] = '/' . trim($settings['cache'], '/');
         $dir = rtrim($dir, '/');
         return self::backend($link, $settings);
@@ -122,7 +124,25 @@ class HLSDownload {
         $collect = [];
         $extinf = false;
         $ext_x_stream_inf = false;
-        $filter = self::filter($settings['filter'], $content);
+        $filter = null;
+        $filters = $settings['filters'];
+        for ($i = 0; $i < count($filters); $i++) {
+            if ($filters[$i] === 'audio') {
+                array_splice($filters, $i, 1, ['codecs=*mp4a*,!resolution', 'codecs!=*avc1*']);
+            } elseif ($filters[$i] === 'video') {
+                array_splice($filters, $i, 1, ['codecs=*avc1*,resolution']);
+            }
+        }
+        var_dump($filters);
+        $col = [];
+        for ($i = 0; $i < count($filters); $i++) {
+            $col[] = self::filter($filters[$i], $content);
+        }
+        if ($filters and count($col) > 1)
+            $filter = call_user_func_array('array_intersect', $col);
+        elseif ($filters) $filter = $col[0];
+        var_dump($filter);
+        // exit();
         $settings['key'] = null;
         $ts_count = -1;
         $stream_count = -1;
@@ -196,7 +216,6 @@ class HLSDownload {
                 continue;
             }
             if ($extinf) {
-                // if (!is_file($link))
                 $line = realurl($line, $link);
                 $ts_name = sprintf("chunk%05s.ts", $ts_count);
                 $return = self::backend(
@@ -241,6 +260,18 @@ class HLSDownload {
         }
         return file_put_contents($target, $collect) > 0;
     }
+    private static function extractMeta($line) {
+        
+                    //     $extract = function ($key) use ($_line) {
+            //         preg_match($r = '~(^|,)' . $key . '="([^"]*)"(,|$)~i', $_line, $match1);
+            //         preg_match($r = '~(^|,)' . $key . '=(.*?)(,|$)~i', $_line, $match2);
+            //         $match = $match1 ?: $match2;
+            //         if (!$match) return null;
+            //         $match = $match[2];
+            //         $match = trim($match, '"');
+            //         return $match;
+            //     };
+    }
     private static function decrypt($chunk, $key) {
         @ $method = $key['method'];
         @ $uri = $key['uri'];
@@ -272,7 +303,7 @@ class HLSDownload {
         }
     }
     private static function filter($filter, $content) {
-        if (is_null($filter)) return $filter;
+        if (is_null($filter)) return [];
         if (is_string($filter . '')) $filter = explode(',', $filter . '');
         $streams = array();
         $lines = nsplit($content);
@@ -294,7 +325,7 @@ class HLSDownload {
             $streams[] = $info;
         }
         // var_dump($streams);
-        if (!$streams) return null;
+        if (!$streams) return [];
         $return = array();
         $search = function ($value, $sort, $negate, $op) {
             $col = [];
@@ -307,13 +338,17 @@ class HLSDownload {
             }
             return $col;
         };
+        var_dump($filter);
+        var_dump($streams);
         foreach ((array)($filter) as $f) {
             if (is_numeric($f)) {
                 $f = intval($f);
                 $return[] = ($f < 0 ? count($streams) : 0) + $f;
                 continue;
             }
+            preg_replace('~^(\!?)([a-zA-Z0-9_-]+)$~', '$2$1=*', $f);
             preg_match("~([a-zA-Z0-9_-]+)(\!?)(=|<=?|>=?)(.*)~", $f, $m);
+            if (!$m) continue;
             $f = strtolower($m[1]);
             $sort = array_column($streams, $f);
             $negate = !!$m[2];

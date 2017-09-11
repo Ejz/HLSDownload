@@ -37,45 +37,39 @@ class TestHLSDownload extends PHPUnit_Framework_TestCase {
             3
         ';
         $content = implode("\n", nsplit($content));
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array(0, $content));
-        $this->assertEquals($filter, ['0']);
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array(-1, $content));
+        // $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array(0, $content));
+        // $this->assertEquals($filter, ['0']);
+        // $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array(-1, $content));
+        // $this->assertEquals($filter, [2]);
+        // $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('-1,0', $content));
+        // $this->assertEquals($filter, [2, 0]);
+        // $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('rESOLUTION=1920x1080', $content));
+        // $this->assertEquals($filter, [1]);
+        // $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('PROGRAM-ID=1', $content));
+        // $this->assertEquals($filter, [0, 1, 2]);
+        // $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('bandWIDTH=max,bandWIDTH=min', $content));
+        // $this->assertEquals($filter, [1, 2]);
+        // $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('bandWIDTH>=120000', $content));
+        // $this->assertEquals($filter, [0, 1, 2]);
+        // $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('bandWIDTH<=120000', $content));
+        // $this->assertEquals($filter, [2]);
+        // $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('bandWIDTH!<=120000', $content));
+        // $this->assertEquals($filter, [0, 1]);
+        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('codecs!=*avc1*', $content));
         $this->assertEquals($filter, [2]);
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('-1,0', $content));
-        $this->assertEquals($filter, [2, 0]);
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('rESOLUTION=1920x1080', $content));
-        $this->assertEquals($filter, [1]);
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('PROGRAM-ID=1', $content));
-        $this->assertEquals($filter, [0, 1, 2]);
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('bandWIDTH=max,bandWIDTH=min', $content));
-        $this->assertEquals($filter, [1, 2]);
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('bandWIDTH>=120000', $content));
-        $this->assertEquals($filter, [0, 1, 2]);
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('bandWIDTH<=120000', $content));
-        $this->assertEquals($filter, [2]);
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('bandWIDTH!<=120000', $content));
-        $this->assertEquals($filter, [0, 1]);
-        $filter = $this->invokeStatic('Ejz\HLSDownload', 'filter', array('audio', $content));
-        $this->assertEquals($filter, [0, 1]);
-        // var_dump($filter);
-        // $scheme = getRequest()->getScheme();
-        // $host = getRequest()->getHost();
-        // //
-        // $tmp = rtrim(`mktemp -d`);
-        // HLSDownload::go("{$scheme}://{$host}/case1/case1.m3u8", ['dir' => $tmp, 'filter' => 'bandWIDTH=Max']);
-        // $files_result = nsplit(shell_exec(sprintf("find %s -type f -size +0c", escapeshellarg($tmp))));
-        // $files_case = nsplit(shell_exec(sprintf("find %s -type f -size +0c", escapeshellarg(WWW_ROOT . '/case1'))));
-        // var_dump($files_result);
-        // var_dump($files_case);
-        // $this->assertTrue(count($files_result) === count($files_case));
-        // exec('rm -rf ' . escapeshellarg($tmp));
+    }
+    public function testHlsDownloadFilters() {
+        return;
+        $scheme = getRequest()->getScheme();
+        $host = getRequest()->getHost();
         //
-        // $tmp = rtrim(`mktemp -d`);
-        // HLSDownload::go(WWW_ROOT . '/case1/case1.m3u8', ['dir' => $tmp]);
-        // $files_result = nsplit(shell_exec(sprintf("find %s -type f -size +0c", escapeshellarg($tmp))));
+        $tmp = rtrim(`mktemp -d`);
+        HLSDownload::go("{$scheme}://{$host}/case1/case1.m3u8", ['dir' => $tmp, 'filters' => 'codecs!=*avc1*']);
+        $files_result = nsplit(shell_exec(sprintf("find %s -type f -size +0c | grep -E stream", escapeshellarg($tmp))));
+        var_dump($files_result);
         // $files_case = nsplit(shell_exec(sprintf("find %s -type f -size +0c", escapeshellarg(WWW_ROOT . '/case1'))));
         // $this->assertTrue(count($files_result) === count($files_case));
-        // exec('rm -rf ' . escapeshellarg($tmp));
+        exec('rm -rf ' . escapeshellarg($tmp));
     }
     // public function testCase1() {
     //     $url = getenv("URL") ?: "";
