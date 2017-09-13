@@ -27,23 +27,26 @@ class HLSDownload {
         $dir = rtrim($dir, '/');
         return self::backend($link, $settings);
     }
-    // private static function getProgressClosure($progress) {
-    //     return function ($ch, $total, $download) use ($progress) {
-    //         static $last = null;
-    //         static $done = false;
-    //         if (!$total) return;
-    //         $percent = round((100 * $download) / $total);
-    //         if ($percent < 0) $percent = 0;
-    //         if ($percent > 100) $percent = 100;
-    //         if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent != 100) return;
-    //         $last = microtime(true);
-    //         $info = curl_getinfo($ch);
-    //         $url = $info['url'];
-    //         if ($done) return;
-    //         if ($percent == 100) $done = true;
-    //         $progress($url, $percent);
-    //     };
-    // }
+    private static function getProgressClosure($w, $h) {
+        $progress = function ($url, $percent) use ($w, $h) {
+            fwrite(STDOUT, "\r{$url}: {$percent}%" . ($percent == 100 ? "\n" : ""));
+        };
+        return function ($ch, $total, $download) use ($progress) {
+            static $last = null;
+            static $done = false;
+            if (!$total) return;
+            $percent = round((100 * $download) / $total);
+            if ($percent < 0) $percent = 0;
+            if ($percent > 100) $percent = 100;
+            if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent != 100) return;
+            $last = microtime(true);
+            $info = curl_getinfo($ch);
+            $url = $info['url'];
+            if ($done) return;
+            if ($percent == 100) $done = true;
+            $progress($url, $percent);
+        };
+    }
     private static function backend($link, $settings) {
         $link = (is_file($link) ? $link : realurl($link));
         $dir = & $settings['dir'];
@@ -53,29 +56,16 @@ class HLSDownload {
         if (!$stream_name) $stream_name = 'stream.m3u8';
         @ $ts_name = $settings['ts_name'];
         if (!$ts_name) $ts_name = 'chunk.ts';
-        // $tmp = $settings['tmp'];
-        // $tmp_prefix = $settings['tmp_prefix'];
-        // $tmp =  sprintf("%s/%s", $settings['tmp'], $settings['tmp_prefix']);
-        // if (!is_dir($tmp)) mkdir($tmp);
-        // if (!is_dir($tmp)) _err("INVALID TMP DIR!");
-        // $stream = $settings['stream'];
-        // $tsname = $settings['tsname'];
-        // $realurl = function ($link) use ($url) {
-        //     if (is_file($url) and !host($link))
-        //         if (strpos($url, '/') === false) return $link;
-        //         else return preg_replace('~/[^/]+$~', '/', $url) . $link;
-        //     elseif (host($link) or host($url))
-        //         return realurl($link, $url);
-        //     return '';
-        // };
         $curl_settings = [
             CURLOPT_USERAGENT => $settings['ua'],
             CURLOPT_TIMEOUT => 120,
             'checker' => [200, 201, 202],
         ];
-        if ($settings['progress']) {
+        if ($settings['progress'] and defined('STDOUT') and posix_isatty(STDOUT)) {
             $curl_settings[CURLOPT_NOPROGRESS] = false;
-            // $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressClosure($settings['progress']);
+            $wh = trim(shell_exec('echo -ne \'\\033[18t\' && IFS=\';\' read -n999 -dt -t1 -s csi h w && echo "${w}x${h}"'));
+            list($w, $h) = explode('x', $wh);
+            $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressClosure($w, $h);
         }
         // if ($settings['headers'] and is_array($settings['headers'])) {
         //     $curl_settings[CURLOPT_HTTPHEADER] = $settings['headers'];
@@ -99,13 +89,6 @@ class HLSDownload {
             }
             return file_get_contents($file);
         };
-        // if ($settings['continue'] and $tsname) {
-        //     $d = $dir . '/' . $tsname;
-        //     if (file_exists($d) and filesize($d) > 0) {
-        //         _log("{$url} -> {$d} (ALREADY)");
-        //         return true;
-        //     }
-        // }
         $content = $getter($link);
         if (!$content) return;
         // either manifest or ts

@@ -32,8 +32,24 @@ class TestHLSDownload extends PHPUnit_Framework_TestCase {
         $host = getRequest()->getHost();
         //
         $tmp = rtrim(`mktemp -d`);
-        HLSDownload::go("{$scheme}://{$host}/case2/case2.m3u8", ['dir' => $tmp]);
-        $files_result = nsplit(shell_exec(sprintf("find %s -type f -size +0c", escapeshellarg($tmp))));
+        HLSDownload::go("{$scheme}://{$host}/case2/case2.m3u8", ['dir' => $tmp, 'decrypt' => true]);
+        $files = nsplit(shell_exec(sprintf("find %s -type f -iname '*.ts' -size +0c", escapeshellarg($tmp))));
+        foreach ($files as $file) {
+            $content = file_get_contents($file);
+            $this->assertTrue($content[0] === 'G', "no G at {$file}");
+        }
+        exec('rm -rf ' . escapeshellarg($tmp));
+        //
+        $tmp = rtrim(`mktemp -d`);
+        HLSDownload::go("{$scheme}://{$host}/case2/case2.m3u8", ['dir' => $tmp, 'decrypt' => false]);
+        $files = nsplit(shell_exec(sprintf("find %s -type f -iname '*.ts' -size +0c", escapeshellarg($tmp))));
+        foreach ($files as $file) {
+            $content = file_get_contents($file);
+            $this->assertTrue($content[0] != 'G', "there is G at {$file}");
+        }
+        exec('rm -rf ' . escapeshellarg($tmp));
+
+
         // $files_case = nsplit(shell_exec(sprintf("find %s -type f -size +0c", escapeshellarg(WWW_ROOT . '/case1'))));
         // $this->assertTrue(count($files_result) === count($files_case));
         // exec('rm -rf ' . escapeshellarg($tmp));
@@ -118,10 +134,6 @@ class TestHLSDownload extends PHPUnit_Framework_TestCase {
         $tmp = rtrim(`mktemp -d`);
         HLSDownload::go("{$scheme}://{$host}/case1/case1.m3u8", ['dir' => $tmp, 'filters' => 'video']);
         $this->assertEquals($streams($tmp), [0, 1]);
-        //
-        $tmp = rtrim(`mktemp -d`);
-        HLSDownload::go("http://playertest.longtailvideo.com/adaptive/oceans_aes/oceans_aes.m3u8", ['dir' => $tmp]);
-        
     }
     // public function testCase1() {
     //     $url = getenv("URL") ?: "";

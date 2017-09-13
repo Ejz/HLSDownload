@@ -12,4 +12,4 @@ branches:
   except:
   - /^v\d+\.\d+(\.\d+)?(-\S*)?$/
 
-script: SQL_HOST=no ./deploy.sh -D -P && ./gitci.sh
+script: SQL_HOST=no ./deploy.sh -D -P && ./phar.sh "hlsdownload.phar" && ./gitci.sh "build/hlsdownload.phar" "Update build [skip ci]"
