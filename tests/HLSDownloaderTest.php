@@ -48,18 +48,6 @@ class TestHLSDownload extends PHPUnit_Framework_TestCase {
             $this->assertTrue($content[0] != 'G', "there is G at {$file}");
         }
         exec('rm -rf ' . escapeshellarg($tmp));
-
-
-        // $files_case = nsplit(shell_exec(sprintf("find %s -type f -size +0c", escapeshellarg(WWW_ROOT . '/case1'))));
-        // $this->assertTrue(count($files_result) === count($files_case));
-        // exec('rm -rf ' . escapeshellarg($tmp));
-        // //
-        // $tmp = rtrim(`mktemp -d`);
-        // HLSDownload::go(WWW_ROOT . '/case1/case1.m3u8', ['dir' => $tmp]);
-        // $files_result = nsplit(shell_exec(sprintf("find %s -type f -size +0c", escapeshellarg($tmp))));
-        // $files_case = nsplit(shell_exec(sprintf("find %s -type f -size +0c", escapeshellarg(WWW_ROOT . '/case1'))));
-        // $this->assertTrue(count($files_result) === count($files_case));
-        // exec('rm -rf ' . escapeshellarg($tmp));
     }
     public function testHlsDownloadExtractMeta() {
         $line = 'PROGRAM-ID=1,BANDWIDTH=670000, RESOLUTION=480x270, CODECS="mp4a.40.2,avc1.77.30", CLOSED-CAPTIONS=NONE';
@@ -73,7 +61,7 @@ class TestHLSDownload extends PHPUnit_Framework_TestCase {
         $host = getRequest()->getHost();
         $streams = function ($dir) {
             $files = nsplit(shell_exec(sprintf(
-                "find %s -type f -size +0c | grep -oP '/stream\\d+/stream'",
+                "find %s -type f -size +0c | grep -oP '/stream\\d+/stream' | sort",
                 escapeshellarg($dir)
             )));
             exec('rm -rf ' . escapeshellarg($dir));
