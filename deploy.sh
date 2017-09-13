@@ -129,6 +129,7 @@ BASE="/var/www/${HOST}"
 CGI="$BASE"
 [ -d cgi ] && CGI="${BASE}/cgi"
 EXEC="$sudo docker exec -i ${DOCKER_NAME_PREFIX}nginx"
+EXEC_T="$sudo docker exec -it ${DOCKER_NAME_PREFIX}nginx"
 EXEC_GH_TOKEN="$sudo docker exec -i ${DOCKER_NAME_PREFIX}nginx env GH_TOKEN=${GH_TOKEN}"
 $EXEC bash -c "echo 'export TERM=xterm' >>/root/.bashrc"
 $EXEC bash -c "echo 'cd ${BASE}' >>/root/.bashrc"
@@ -153,5 +154,5 @@ if [ "$SQL_HOST" != "no" ]; then
 fi
 
 if [ "$phpunit" ]; then
-    $EXEC php "$BASE"/phpunit.phar -c /var/www/"$HOST"/phpunit.xml
+    $EXEC_T php "$BASE"/phpunit.phar -c /var/www/"$HOST"/phpunit.xml
 fi
