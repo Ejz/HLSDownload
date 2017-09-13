@@ -53,5 +53,9 @@ fi
 echo "Commit message : ${message}"
 echo "Last tag : ${tag}"
 echo "Next tag : ${ntag}"
+if git tag | grep -q "$ntag"'$'; then
+    ntag=`ver_inc "$ntag"`
+    echo "Next tag : ${ntag}"
+fi
 git tag -a "$ntag" -m "$ntag"
 git push --tags

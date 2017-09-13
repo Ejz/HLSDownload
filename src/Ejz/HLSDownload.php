@@ -71,6 +71,7 @@ class HLSDownload {
         $curl_settings = [
             CURLOPT_USERAGENT => $settings['ua'],
             CURLOPT_TIMEOUT => 120,
+            'checker' => [200, 201, 202],
         ];
         if ($settings['progress']) {
             $curl_settings[CURLOPT_NOPROGRESS] = false;
@@ -133,7 +134,6 @@ class HLSDownload {
                 array_splice($filters, $i, 1, ['codecs=*avc1*,resolution']);
             }
         }
-        var_dump($filters);
         $col = [];
         for ($i = 0; $i < count($filters); $i++) {
             $col[] = self::filter($filters[$i], $content);
@@ -141,61 +141,59 @@ class HLSDownload {
         if ($filters and count($col) > 1)
             $filter = call_user_func_array('array_intersect', $col);
         elseif ($filters) $filter = $col[0];
-        var_dump($filter);
-        // exit();
         $settings['key'] = null;
         $ts_count = -1;
         $stream_count = -1;
         foreach (nsplit($content) as $line) {
-            // if (strpos($line, $str = '#EXT-X-KEY:') === 0) {
-            //     $_line = substr($line, strlen($str));
-            //     $extract = function ($key) use ($_line) {
-            //         preg_match($r = '~(^|,)' . $key . '="([^"]*)"(,|$)~i', $_line, $match1);
-            //         preg_match($r = '~(^|,)' . $key . '=(.*?)(,|$)~i', $_line, $match2);
-            //         $match = $match1 ?: $match2;
-            //         if (!$match) return null;
-            //         $match = $match[2];
-            //         $match = trim($match, '"');
-            //         return $match;
-            //     };
-            //     $method = $extract('method');
-            //     $uri = $_uri = $extract('uri');
-            //     if ($uri and strpos($uri, $_ = 'data:text/plain;base64,') === 0)
-            //         $uri = base64_decode(substr($uri, strlen($_)));
-            //     elseif ($uri and ($_ = $realurl($uri))) {
-            //         $uri = $curl($_);
-            //     } else $uri = null;
-            //     if ($settings['decrypt'] and strtolower($method) != 'none') {
-            //         if (!$uri) {
-            //             _warn("ERROR WHILE GETTING KEY: {$line}");
-            //             return false;
-            //         }
-            //         $uri = bin2hex($uri);
-            //         $settings['key'] = array(
-            //             'method' => $method,
-            //             'uri' => $uri,
-            //             'iv' => $extract('iv'),
-            //             'keyformat' => $extract('keyformat'),
-            //         );
-            //     } elseif ($settings['decrypt'] and strtolower($method) == 'none') {
-            //         $settings['key'] = null;
-            //     } elseif (!$settings['decrypt'] and strtolower($method) != 'none') {
-            //         if (!$uri) {
-            //             _warn("ERROR WHILE GETTING KEY: {$line}");
-            //             return false;
-            //         }
-            //         if (!is_dir($d = $dir . '/keys')) mkdir($d);
-            //         $i = 0;
-            //         while (file_exists($file = $d . '/key' . $i) and md5_file($file) != md5($uri))
-            //             $i++;
-            //         _log("SAVE KEY: {$_uri} -> {$file}");
-            //         file_put_contents($file, $uri);
-            //         $collect[] = str_replace_once($extract('uri'), 'keys/key' . $i, $line);
-            //     } else {
-            //         $collect[] = $line;
-            //     }
-            //     continue;
-            // }
+            if (strpos($line, $str = '#EXT-X-MEDIA-SEQUENCE:') === 0) {
+                $collect[] = $line;
+                $line = substr($line, strlen($str));
+                $ts_count += intval($line);
+                continue;
+            }
+            if (strpos($line, $str = '#EXT-X-KEY:') === 0) {
+                $_line = $line;
+                $line = substr($line, strlen($str));
+                $meta = self::extractMeta($line);
+                @ $method = strtolower($meta['method']);
+                @ $uri = $meta['uri'];
+                $_uri = '';
+                $base64 = (strpos($uri, $_ = 'data:text/plain;base64,') === 0);
+                if ($uri and $base64) {
+                    $uri = base64_decode(substr($uri, strlen($_)));
+                } elseif ($uri and ($_ = realurl($uri, $link))) {
+                    $_uri = $_;
+                    $uri = $getter($_);
+                } else $uri = null;
+                $err = "Error getting key from {$_line}";
+                if ($settings['decrypt'] and $method != 'none') {
+                    if (!$uri) return _warn($err);
+                    $uri = bin2hex($uri);
+                    @ $iv = $meta['iv'];
+                    if (!$iv) $iv = sprintf("0x%016s", dechex($ts_count + 1));
+                    $settings['key'] = array(
+                        'method' => $method,
+                        'uri' => $uri,
+                        'iv' => $iv,
+                        'keyformat' => @ $meta['keyformat'],
+                    );
+                } elseif ($settings['decrypt'] and $method == 'none') {
+                    $settings['key'] = null;
+                } elseif (!$settings['decrypt'] and $method != 'none' and !$base64) {
+                    if (!$uri) return _warn($err);
+                    if (!is_dir($keys = $dir . '/keys'))
+                        @ mkdir($keys, $mode = 0755, $recursive = true);
+                    $i = 0;
+                    while (file_exists($file = $keys . '/key' . $i) and md5_file($file) != md5($uri))
+                        $i++;
+                    echo "{$_uri} -> {$file}\n";
+                    file_put_contents($file, $uri);
+                    $collect[] = str_replace_once($meta['uri'], 'keys/key' . $i, $line);
+                } else {
+                    $collect[] = $line;
+                }
+                continue;
+            }
             if (strpos($line, '#EXTINF:') === 0) {
                 $collect[] = $line;
                 $extinf = true;
@@ -261,29 +259,61 @@ class HLSDownload {
         return file_put_contents($target, $collect) > 0;
     }
     private static function extractMeta($line) {
-        
-                    //     $extract = function ($key) use ($_line) {
-            //         preg_match($r = '~(^|,)' . $key . '="([^"]*)"(,|$)~i', $_line, $match1);
-            //         preg_match($r = '~(^|,)' . $key . '=(.*?)(,|$)~i', $_line, $match2);
-            //         $match = $match1 ?: $match2;
-            //         if (!$match) return null;
-            //         $match = $match[2];
-            //         $match = trim($match, '"');
-            //         return $match;
-            //     };
+        $add = '';
+        $rules = [
+            function (& $string, & $output) use (& $add) {
+                preg_match('~^([a-zA-Z0-9_-]+)=\s*~', $string, $match);
+                if (!$match) return;
+                $string = substr($string, strlen($match[0]));
+                $add = strtolower($match[1]);
+                return true;
+            },
+            function (& $string, & $output) use (& $add) {
+                $one = $string[0];
+                if ($one != '"') return;
+                $string = substr($string, 1);
+                $pos = strpos($string, $one);
+                if ($pos === false) {
+                    if ($add) {
+                        $output[$add] = $string;
+                        $add = '';
+                    }
+                    $string = '';
+                    return true;
+                }
+                $sub = substr($string, 0, $pos);
+                if ($add) {
+                    $output[$add] = $sub;
+                    $add = '';
+                }
+                $string = substr($string, $pos + 1) . '';
+                return true;
+            },
+            function (& $string, & $output) use (& $add) {
+                preg_match('~^([^,]*),?\s*~', $string, $match);
+                if (!$match) return;
+                $string = substr($string, strlen($match[0]));
+                if ($add) {
+                    $output[$add] = $match[1];
+                    $add = '';
+                }
+                return true;
+            },
+        ];
+        return Lexer::go($line, ['rules' => $rules, 'implode' => null]);
     }
     private static function decrypt($chunk, $key) {
         @ $method = $key['method'];
         @ $uri = $key['uri'];
         @ $iv = $key['iv'];
-        $methods = array("AES-128");
-        if (!in_array(strtolower($method), array_map('strtolower', $methods)))
-            return 'Unknown encryption method!';
-        if (!is_file($chunk)) return 'Chunk file is NOT found!';
+        $methods = array("aes-128");
+        if (!in_array($method, $methods))
+            return "Unknown encryption method ({$method})!";
+        if (!is_file($chunk)) return "Chunk file is NOT found ({$chunk})!";
         exec('which openssl', $output, $return);
-        if ($return != '0') return "openssl is NOT found!";
-        if (!$uri) return "Invalid URI!";
-        if (!$iv) return "Invalid IV!";
+        if ($return != '0') return "openssl binary is NOT found!";
+        if (!$uri) return "Invalid Key content ({$chunk})!";
+        if (!$iv) return "Invalid IV ({$chunk})!";
         $tmp = rtrim(`mktemp`);
         shell_exec($_ = sprintf(
             "openssl aes-128-cbc -d -in %s -out %s -p -nosalt -iv %s -K %s",
@@ -299,7 +329,7 @@ class HLSDownload {
             return '';
         } else {
             unlink($tmp);
-            return 'Error while decoding!';
+            return "Error while decoding ({$chunk})!";
         }
     }
     private static function filter($filter, $content) {
@@ -309,22 +339,11 @@ class HLSDownload {
         $lines = nsplit($content);
         for ($i = 0; $i < count($lines) - 1; $i++) {
             $line = $lines[$i];
-            // var_dump($line);
             if (strpos($line, $_ = '#EXT-X-STREAM-INF:') !== 0) continue;
             $line = substr($line, strlen($_));
-            $keys = explode(',', $line);
-            $info = array();
-            foreach ($keys as $key) {
-                $key = explode('=', $key, 2);
-                if (count($key) != 2) continue;
-                list($key, $value) = $key;
-                $key = trim(strtolower($key));
-                $value = trim($value, ' "\'');
-                $info[$key] = $value;
-            }
-            $streams[] = $info;
+            $meta = self::extractMeta($line);
+            if ($meta) $streams[] = $meta;
         }
-        // var_dump($streams);
         if (!$streams) return [];
         $return = array();
         $search = function ($value, $sort, $negate, $op) {
@@ -338,19 +357,18 @@ class HLSDownload {
             }
             return $col;
         };
-        var_dump($filter);
-        var_dump($streams);
         foreach ((array)($filter) as $f) {
             if (is_numeric($f)) {
                 $f = intval($f);
                 $return[] = ($f < 0 ? count($streams) : 0) + $f;
                 continue;
             }
-            preg_replace('~^(\!?)([a-zA-Z0-9_-]+)$~', '$2$1=*', $f);
+            $f = preg_replace('~^(\!?)([a-zA-Z0-9_-]+)$~', '$2$1=?*', $f);
             preg_match("~([a-zA-Z0-9_-]+)(\!?)(=|<=?|>=?)(.*)~", $f, $m);
             if (!$m) continue;
             $f = strtolower($m[1]);
-            $sort = array_column($streams, $f);
+            $sort = $streams;
+            foreach ($sort as & $s) $s = isset($s[$f]) ? $s[$f] : '';
             $negate = !!$m[2];
             $operation = $m[3];
             $value = $m[4];
