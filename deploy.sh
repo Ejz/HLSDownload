@@ -99,8 +99,8 @@ CGI="$BASE"
 EXEC="$sudo docker exec -i${t} ${DOCKER_NAME_PREFIX}nginx"
 EXEC_GH_TOKEN="$sudo docker exec -i${t} ${DOCKER_NAME_PREFIX}nginx env GH_TOKEN=${GH_TOKEN}"
 
-if [ "${#exec[@]}" -gt 0 ] && [ `$sudo docker ps -a --filter "name=^/${DOCKER_NAME_PREFIX}nginx" >/dev/null 2>&1` ]; then
-    $EXEC "$exec"
+if [ "${#exec[@]}" -gt 0 ] && $sudo docker ps --filter "name=^/${DOCKER_NAME_PREFIX}nginx" | grep -q "$DOCKER_NAME_PREFIX"nginx; then
+    $EXEC "${exec[@]}"
     exit "$?"
 fi
 

@@ -9,6 +9,21 @@ class TestHLSDownload extends PHPUnit_Framework_TestCase {
         $method->setAccessible(true);
         return $method->invokeArgs(null, $parameters);
     }
+    public function testHlsDownloadBinary() {
+        $scheme = getRequest()->getScheme();
+        $host = getRequest()->getHost();
+        //
+        $tmp = rtrim(`mktemp -d`);
+        $res = shell_exec(sprintf(
+            "%s -F audio -d %s %s",
+            escapeshellarg(ROOT . '/bin/hlsdownload.php'), escapeshellarg($tmp), WWW_ROOT . '/case1/case1.m3u8'
+        ));
+        $this->assertTrue(strpos($res, 'stream2/chunk00000.ts') !== false);
+        $this->assertTrue(strpos($res, 'stream2/chunk00001.ts') !== false);
+        $this->assertTrue(strpos($res, 'stream1/chunk00001.ts') === false);
+        $this->assertTrue(strpos($res, 'stream0/chunk00001.ts') === false);
+        exec('rm -rf ' . escapeshellarg($tmp));
+    }
     public function testHlsDownloadCase1() {
         $scheme = getRequest()->getScheme();
         $host = getRequest()->getHost();

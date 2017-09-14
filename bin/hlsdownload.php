@@ -2,64 +2,54 @@
 <?php
 
 define('ROOT', __DIR__);
+define('VERSION', '1.4.1');
+define('AUTHOR', 'Evgeny Cernisev');
 require(ROOT . '/../vendor/autoload.php');
 
 use Ejz\HLSDownload;
 
-if (version_compare('5.5.0', PHP_VERSION, '>'))
-    _log("MINIMUM REQUIRED PHP VERSION IS 5.5!", E_USER_ERROR);
+if (version_compare('5.6.0', PHP_VERSION, '>'))
+    _err("Error! Minimum required version is 5.6!");
 
 if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN')
-    _log("WINDOWS IS NOT SUPPORTED!", E_USER_ERROR);
+    _err("Windows OS is not supported!");
 
-$opts = getopts(array(
-    'd' => true, 'F' => true,
-    'progress' => false,
-    'decrypt' => false, 'no-decrypt' => false,
-    'limit-rate' => true, 'continue' => false
-));
+$opts = getopts([
+    'h' => false, 'help' => 'h',
+    'd' => true, 'directory' => 'd',
+    'F' => ['multiple' => true, 'value' => true], 'filters' => 'F',
+    'no-decrypt' => false,
+    'limit-rate' => true,
+]);
 
+if (isset($opts['h'])) goto help;
 if ($opts === array() or isset($opts[2])) goto help;
-if (!isset($opts[1]) or !(host($opts[1]) or is_file($opts[1]))) goto help;
 
 $settings = array();
 if (isset($opts['d'])) $settings['dir'] = $opts['d'];
-if (isset($opts['F'])) $settings['filter'] = $opts['F'];
-if (isset($opts['progress']) and $opts['progress'])
-    $settings['progress'] = function ($url, $percent) {
-        fwrite(STDERR, "\r{$url}: {$percent}%" . ($percent == 100 ? "\n" : ""));
-    };
-if (isset($opts['limit-rate']) and $opts['limit-rate'])
-    $settings['limitRate'] = $opts['limit-rate'];
-if (isset($opts['continue']) and $opts['continue'])
-    $settings['continue'] = $opts['continue'];
-if (
-    isset($opts['decrypt']) and $opts['decrypt']
-    and isset($opts['no-decrypt']) and $opts['no-decrypt']
-) {
-    fwrite(STDERR, "Error: used --decrypt with --no-decrypt\n");
-    exit(1);
-}
-$settings['decrypt'] = !(isset($opts['no-decrypt']) and $opts['no-decrypt']);
-if (HLSDownload::go($opts[1], $settings))
-    exit(0);
-exit(1);
+if (isset($opts['F'])) $settings['filters'] = $opts['F'];
+if (isset($opts['limit-rate'])) $settings['limit_rate'] = $opts['limit-rate'];
+$settings['decrypt'] = !isset($opts['no-decrypt']);
+$res = HLSDownload::go($opts[1], $settings);
+exit($res ? 0 : 1);
 
 help:
 
 ob_start();
-echo "HLSDownload 1.4.1 by Ejz Cernisev.
+$ver = VERSION;
+$aut = AUTHOR;
+echo "HLSDownload {$ver} by {$aut}.
 
 Usage: hlsdownload [options] <M3U8>
 
+Downloads recursively HLS file.
+
 Options:
-  -F <filter>          Filter M3U8 streams, ex: bandwidth=max
-  -d <dir>             Target directory
-  --limit-rate <speed> Limit download speed (can use K, M, G)
-  --progress           Show progress
-  --decrypt            Decrypt every chunk
-  --no-decrypt         Turn off decryption
-  --continue           Continue download (in case of disconnect)
+
+    -F, --filters <filter>    Filter M3U8 streams, ex: bandwidth=max
+    -d, --directory <dir>     Target directory
+    --limit-rate <speed>      Limit download speed (can use K, M, G)
+    --no-decrypt              Turn off decryption
 ";
 $ob = ob_get_clean();
 fwrite(STDERR, $ob);

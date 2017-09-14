@@ -12,9 +12,7 @@ class HLSDownload {
             'cache' => self::CACHE,
             'tmp' => sys_get_temp_dir(),
             'decrypt' => true,
-            'progress' => false,
             'key' => null,
-            'clear_cache' => true,
             'filters' => [],
         ];
         $dir = & $settings['dir'];
@@ -61,7 +59,7 @@ class HLSDownload {
             CURLOPT_TIMEOUT => 120,
             'checker' => [200, 201, 202],
         ];
-        if ($settings['progress'] and defined('STDOUT') and posix_isatty(STDOUT)) {
+        if (false and defined('STDOUT') and posix_isatty(STDOUT)) {
             $curl_settings[CURLOPT_NOPROGRESS] = false;
             $wh = trim(shell_exec('echo -ne \'\\033[18t\' && IFS=\';\' read -n999 -dt -t1 -s csi h w && echo "${w}x${h}"'));
             list($w, $h) = explode('x', $wh);
@@ -231,14 +229,12 @@ class HLSDownload {
         $is_master = (strpos($collect, "\n#EXT-X-STREAM-INF:") !== false);
         $target = $dir . '/' . ($is_master ? $manifest_name : $stream_name);
         echo "{$link} -> {$target}\n";
-        if ($settings['clear_cache']) {
-            $files = scandir($cache);
-            foreach ($files as $file) {
-                if ($file === '.' or $file === '..') continue;
-                unlink($cache . '/' . $file);
-            }
-            rmdir($cache);
+        $files = scandir($cache);
+        foreach ($files as $file) {
+            if ($file === '.' or $file === '..') continue;
+            unlink($cache . '/' . $file);
         }
+        rmdir($cache);
         return file_put_contents($target, $collect) > 0;
     }
     private static function extractMeta($line) {
