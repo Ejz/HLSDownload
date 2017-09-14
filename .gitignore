@@ -12,3 +12,4 @@ local.ini
 /www/css/sass.pid
 *.sublime-project
 *.sublime-workspace
+phar-composer.phar

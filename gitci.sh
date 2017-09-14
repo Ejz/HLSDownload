@@ -28,7 +28,10 @@ git checkout "$branch"
 t="https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG}.git"
 git remote set-url origin "$t"
 git status
-if ! git diff --quiet && test "$1" && test "$2"; then
+if [ "$1" -a "$2" ]; then
+    git add "$1"
+fi
+if ! git diff --cached --quiet && [ "$1" -a "$2" ]; then
     git add "$1"
     git commit -m "$2"
     git push origin "$branch"
