@@ -23,7 +23,7 @@ $opts = getopts([
 ]);
 
 if (isset($opts['h'])) goto help;
-if ($opts === array() or isset($opts[2])) goto help;
+if (!isset($opts[1]) or isset($opts[2])) goto help;
 
 $settings = array();
 if (isset($opts['d'])) $settings['dir'] = $opts['d'];

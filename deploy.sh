@@ -176,6 +176,6 @@ if [ "$SQL_HOST" != "no" ]; then
 fi
 
 if [ "${#exec[@]}" -gt 0 ]; then
-    $EXEC "$exec"
+    $EXEC "${exec[@]}"
     exit "$?"
 fi
