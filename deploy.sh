@@ -5,22 +5,38 @@ this_dir=`dirname "$this"`
 cd "$this_dir"
 prefix=`basename "$this_dir"`
 prefix=`echo "$prefix" | awk '{print tolower($0)}'`
-defaults=""
-phpunit=""
-login=""
-test=""
-if [ "$1" == "-D" -o "$2" == "-D" -o "$3" == "-D" -o "$4" == "-D" ]; then
-    defaults="yes"
-fi
-if [ "$1" == "-P" -o "$2" == "-P" -o "$3" == "-P" -o "$4" == "-P" ]; then
-    phpunit="yes"
-fi
-if [ "$1" == "-L" -o "$2" == "-L" -o "$3" == "-L" -o "$4" == "-L" ]; then
-    login="yes"
-fi
-if [ "$1" == "-T" -o "$2" == "-T" -o "$3" == "-T" -o "$4" == "-T" ]; then
-    test="yes"
-fi
+while test "$#" -gt 0; do
+    case "$1" in
+        -h|--help)
+            echo "-h, --help          show help"
+            echo "-D, --defaults      do not ask user"
+            echo "-L, --login         login to nginx instance"
+            echo "-T, --test          run phpunit with filter"
+            echo "-e, --exec [cmd]    exec inside nginx"
+            exit 0
+            ;;
+        -D|--defaults)
+            defaults="yes"
+            shift
+            ;;
+        -L|--login)
+            login="yes"
+            shift
+            ;;
+        -T|--test)
+            test="yes"
+            shift
+            ;;
+        -e|--exec)
+            shift
+            exec="$@"
+            shift 1000
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
 sudo=""
 [ "$EUID" -ne "0" ] && sudo="sudo"
@@ -66,16 +82,27 @@ for var in "${vars[@]}"; do
     mkdir -p vars
     echo "$temp" >"vars/${one}"
     eval export "$one"='$temp'
-    if [ "$one" == "DOCKER_NAME_PREFIX" -a "$login" ]; then
-        $sudo docker exec -ti "${DOCKER_NAME_PREFIX}nginx" bash
-        exit
-    fi
-    if [ "$one" == "DOCKER_NAME_PREFIX" -a "$test" ]; then
-        $sudo docker exec -ti "${DOCKER_NAME_PREFIX}nginx" \
-            php /var/www/"$HOST"/phpunit.phar -c /var/www/"$HOST"/phpunit.xml
-        exit
-    fi
 done
+
+if test "$test"; then
+    exec=("php" "/var/www/${HOST}/phpunit.phar" "-c" "/var/www/${HOST}/phpunit.xml")
+fi
+
+if test "$login"; then
+    exec=("bash")
+fi
+
+BASE="/var/www/${HOST}"
+CGI="$BASE"
+[ -d cgi ] && CGI="${BASE}/cgi"
+[ -t 0 ] && t="t"
+EXEC="$sudo docker exec -i${t} ${DOCKER_NAME_PREFIX}nginx"
+EXEC_GH_TOKEN="$sudo docker exec -i${t} ${DOCKER_NAME_PREFIX}nginx env GH_TOKEN=${GH_TOKEN}"
+
+if [ "${#exec[@]}" -gt 0 ] && [ `$sudo docker ps -a --filter "name=^/${DOCKER_NAME_PREFIX}nginx" >/dev/null 2>&1` ]; then
+    $EXEC "$exec"
+    exit "$?"
+fi
 
 $sudo rm -f local.ini cgi/local.ini
 $sudo rm -rf vendor cgi/vendor
@@ -125,12 +152,7 @@ echo
 
 set -x
 set -e
-BASE="/var/www/${HOST}"
-CGI="$BASE"
-[ -d cgi ] && CGI="${BASE}/cgi"
-EXEC="$sudo docker exec -i ${DOCKER_NAME_PREFIX}nginx"
-EXEC_T="$sudo docker exec -it ${DOCKER_NAME_PREFIX}nginx"
-EXEC_GH_TOKEN="$sudo docker exec -i ${DOCKER_NAME_PREFIX}nginx env GH_TOKEN=${GH_TOKEN}"
+
 $EXEC bash -c "echo 'export TERM=xterm' >>/root/.bashrc"
 $EXEC bash -c "echo 'cd ${BASE}' >>/root/.bashrc"
 $EXEC git config --global user.email "user@email.com"
@@ -153,6 +175,7 @@ if [ "$SQL_HOST" != "no" ]; then
     $EXEC php "$CGI"/bootstrap.php ini_file_set LOCAL_INI sql.db "$SQL_DB"
 fi
 
-if [ "$phpunit" ]; then
-    $EXEC_T php "$BASE"/phpunit.phar -c /var/www/"$HOST"/phpunit.xml
+if [ "${#exec[@]}" -gt 0 ]; then
+    $EXEC "$exec"
+    exit "$?"
 fi

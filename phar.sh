@@ -12,5 +12,5 @@ fi
 
 ./phar-composer.phar build .
 mkdir -p build
-chmod a+x myrepo.phar
-mv myrepo.phar build/"$1"
+chmod a+x "$1"
+mv "$1" build/"$1"
