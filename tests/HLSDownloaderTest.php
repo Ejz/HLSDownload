@@ -65,11 +65,32 @@ class TestHLSDownload extends PHPUnit_Framework_TestCase {
         exec('rm -rf ' . escapeshellarg($tmp));
     }
     public function testHlsDownloadExtractMeta() {
-        $line = 'PROGRAM-ID=1,BANDWIDTH=670000, RESOLUTION=480x270, CODECS="mp4a.40.2,avc1.77.30", CLOSED-CAPTIONS=NONE';
+        $line = '#PREFIX:PROGRAM-ID=1,BANDWIDTH=670000, RESOLUTION=480x270, CODECS="mp4a.40.2,avc1.77.30", CLOSED-CAPTIONS=NONE';
         $meta = $this->invokeStatic('Ejz\HLSDownload', 'extractMeta', array($line));
+        $this->assertTrue($meta['_prefix'] == '#PREFIX:');
         $this->assertTrue($meta['program-id'] == '1');
         $this->assertTrue($meta['resolution'] == '480x270');
         $this->assertTrue($meta['codecs'] == 'mp4a.40.2,avc1.77.30');
+        //
+        $line = '#PREFIX';
+        $meta = $this->invokeStatic('Ejz\HLSDownload', 'extractMeta', array($line));
+        $this->assertTrue($meta['_prefix'] == '#PREFIX');
+        //
+        $line = '#PREFIX:';
+        $meta = $this->invokeStatic('Ejz\HLSDownload', 'extractMeta', array($line));
+        $this->assertTrue($meta['_prefix'] == '#PREFIX:');
+    }
+    public function testHlsDownloadCompileLine() {
+        $meta = [
+            '_prefix' => '#PREFIX:',
+            'program-id' => '1',
+            'bandWIDTH' => '670000',
+            'codecs' => 'mp4a.40.2,avc1.77.30'
+        ];
+        $line = $this->invokeStatic('Ejz\HLSDownload', 'compileLine', array($meta));
+        $assert = '#PREFIX:PROGRAM-ID=1,BANDWIDTH=670000,CODECS="mp4a.40.2,avc1.77.30"';
+        $this->assertEquals($line, $assert);
+        $meta = $this->invokeStatic('Ejz\HLSDownload', 'extractMeta', array($line));
     }
     public function testHlsDownloadFilters() {
         $scheme = getRequest()->getScheme();

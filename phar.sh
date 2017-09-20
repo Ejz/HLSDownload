@@ -4,13 +4,24 @@ this=`readlink -fe "$0"`
 this_dir=`dirname "$this"`
 cd "$this_dir"
 
-echo $PATH
 which phar-composer || { echo "phar-composer is not found in PATH"; exit 1; }
 bin="hlsdownload.phar"
 
 rm -rf build
+mkdir build
+cp composer.json build/
+cp -r src/ build/
+cp -r vendor/ build/
+cp -r bin/ build/
+cd build/
+
 rm -f vendor/ejz/functions/fonts/*
+> vendor/ejz/functions/ua.list.txt
+
 phar-composer build .
-mkdir -p build
 chmod a+x "$bin"
-mv "$bin" build/"$bin"
+mv "$bin" ..
+cd ..
+rm -rf build/
+mkdir build
+mv "$bin" build/

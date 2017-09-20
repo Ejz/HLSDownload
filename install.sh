@@ -4,12 +4,6 @@ cd "`dirname "$0"`"
 
 [ "$EUID" -eq "0" ] || { echo "Please, run ${0} with root!"; exit 1; }
 
-if [ "$1" = "--clear" ]; then
-    rm -rf vendor cgi/vendor
-    rm -f composer.phar phar-composer.phar phpunit.phar
-    exit
-fi
-
 # Install Composer
 if [ ! -f "composer.phar" ]; then
     echo "Installing Composer .."

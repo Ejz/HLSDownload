@@ -14,6 +14,7 @@ class HLSDownload {
             'decrypt' => true,
             'key' => null,
             'filters' => [],
+            'no-ts' => false,
         ];
         $dir = & $settings['dir'];
         if (!is_dir($dir)) @ mkdir($dir, $mode = 0755, $recursive = true);
@@ -91,8 +92,8 @@ class HLSDownload {
         if (!$content) return;
         // either manifest or ts
         $is_manifest = (strpos($content, '#EXTM3U') === 0);
-        $is_ts = !$is_manifest;
-        if ($is_ts) {
+        if (!$is_manifest) {
+            if ($settings['no-ts']) return false;
             $target = $dir . '/' . $ts_name;
             echo "{$link} -> {$target}\n";
             $_ = file_put_contents($target, $content);
@@ -132,47 +133,52 @@ class HLSDownload {
                 $ts_count += intval($line);
                 continue;
             }
-            if (strpos($line, $str = '#EXT-X-KEY:') === 0) {
-                $_line = $line;
-                $line = substr($line, strlen($str));
+            if (strpos($line, '#EXT-X-KEY:') === 0) {
                 $meta = self::extractMeta($line);
                 @ $method = strtolower($meta['method']);
                 @ $uri = $meta['uri'];
-                $_uri = '';
-                $base64 = (strpos($uri, $_ = 'data:text/plain;base64,') === 0);
-                if ($uri and $base64) {
-                    $uri = base64_decode(substr($uri, strlen($_)));
-                } elseif ($uri and ($_ = realurl($uri, $link))) {
-                    $_uri = $_;
-                    $uri = $getter($_);
-                } else $uri = null;
-                $err = "Error getting key from {$_line}";
-                if ($settings['decrypt'] and $method != 'none') {
-                    if (!$uri) return _warn($err);
-                    $uri = bin2hex($uri);
+                $base64 = (stripos($uri, $_base64 = 'data:text/plain;base64,') === 0);
+                if (strtolower($method) == 'none') {
+                    $settings['key'] = null;
+                    $collect[] = $line;
+                    continue;
+                }
+                if (!$base64) $uri = realurl($uri, $link);
+                if ($settings['no-ts']) {
+                    $meta['uri'] = $uri;
+                    $collect[] = self::compileLine($meta);
+                    continue;
+                }
+                $uri_content = $base64 ? base64_decode(substr($uri, strlen($_base64))) : $getter($uri);
+                $err = "Error getting key from {$line}";
+                if ($settings['decrypt']) {
+                    if (!$uri_content) return _warn($err);
+                    $uri_content = bin2hex($uri_content);
                     @ $iv = $meta['iv'];
                     if (!$iv) $iv = sprintf("0x%016s", dechex($ts_count + 1));
                     $settings['key'] = array(
                         'method' => $method,
-                        'uri' => $uri,
+                        'uri' => $uri_content,
                         'iv' => $iv,
                         'keyformat' => @ $meta['keyformat'],
+                        'keyformatversions' => @ $meta['keyformatversions'],
                     );
-                } elseif ($settings['decrypt'] and $method == 'none') {
-                    $settings['key'] = null;
-                } elseif (!$settings['decrypt'] and $method != 'none' and !$base64) {
-                    if (!$uri) return _warn($err);
+                    continue;
+                }
+                if (!$base64) {
+                    if (!$uri_content) return _warn($err);
                     if (!is_dir($keys = $dir . '/keys'))
                         @ mkdir($keys, $mode = 0755, $recursive = true);
                     $i = 0;
-                    while (file_exists($file = $keys . '/key' . $i) and md5_file($file) != md5($uri))
+                    while (file_exists($file = $keys . '/key' . $i) and md5_file($file) != md5($uri_content))
                         $i++;
-                    echo "{$_uri} -> {$file}\n";
-                    file_put_contents($file, $uri);
-                    $collect[] = str_replace_once($meta['uri'], 'keys/key' . $i, $line);
-                } else {
-                    $collect[] = $line;
+                    echo "{$uri} -> {$file}\n";
+                    file_put_contents($file, $uri_content);
+                    $meta['uri'] = 'keys/key' . $i;
+                    $collect[] = self::compileLine($meta);
+                    continue;
                 }
+                $collect[] = $line;
                 continue;
             }
             if (strpos($line, '#EXTINF:') === 0) {
@@ -197,9 +203,14 @@ class HLSDownload {
             if ($extinf) {
                 $line = realurl($line, $link);
                 $ts_name = sprintf("chunk%05s.ts", $ts_count);
-                $return = self::backend(
-                    $line, ['ts_name' => $ts_name] + $settings
-                );
+                if ($settings['no-ts'] and is_file($link)) {
+                    symlink(realpath($link), $dir . '/' . $ts_name);
+                } elseif ($settings['no-ts']) {
+                    $ts_name = $line;
+                } else
+                    $return = self::backend(
+                        $line, ['ts_name' => $ts_name] + $settings
+                    );
                 $collect[] = $ts_name;
                 $extinf = false;
                 continue;
@@ -237,8 +248,24 @@ class HLSDownload {
         rmdir($cache);
         return file_put_contents($target, $collect) > 0;
     }
+    private static function compileLine($meta) {
+        $prefix = $meta['_prefix'];
+        unset($meta['_prefix']);
+        $collect = [];
+        foreach ($meta as $key => $value) {
+            $value = ctype_alnum(str_replace('_', '', $value)) ? $value : "\"{$value}\"";
+            $collect[] = strtoupper($key) . '=' . $value;
+        }
+        return $prefix . implode(',', $collect);
+    }
     private static function extractMeta($line) {
         $add = '';
+        $line = explode(':', $line, 2);
+        $prefix = $line[0];
+        if (isset($line[1])) {
+            $line = $line[1];
+            $prefix .= ':';
+        } else $line = '';
         $rules = [
             function (& $string, & $output) use (& $add) {
                 preg_match('~^([a-zA-Z0-9_-]+)=\s*~', $string, $match);
@@ -279,7 +306,10 @@ class HLSDownload {
                 return true;
             },
         ];
-        return Lexer::go($line, ['rules' => $rules, 'implode' => null]);
+        $_ = Lexer::go($line, ['rules' => $rules, 'implode' => null]);
+        $_ = $_ ?: [];
+        $_['_prefix'] = $prefix;
+        return $_;
     }
     private static function decrypt($chunk, $key) {
         @ $method = $key['method'];
@@ -319,7 +349,6 @@ class HLSDownload {
         for ($i = 0; $i < count($lines) - 1; $i++) {
             $line = $lines[$i];
             if (strpos($line, $_ = '#EXT-X-STREAM-INF:') !== 0) continue;
-            $line = substr($line, strlen($_));
             $meta = self::extractMeta($line);
             if ($meta) $streams[] = $meta;
         }
