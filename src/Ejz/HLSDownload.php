@@ -204,6 +204,7 @@ class HLSDownload {
                 $line = realurl($line, $link);
                 $ts_name = sprintf("chunk%05s.ts", $ts_count);
                 if ($settings['no-ts'] and is_file($link)) {
+                    @ unlink($dir . '/' . $ts_name);
                     symlink(realpath($link), $dir . '/' . $ts_name);
                 } elseif ($settings['no-ts']) {
                     $ts_name = $line;
