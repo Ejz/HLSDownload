@@ -65,15 +65,20 @@ function getRequest() {
     $argv = isset($_SERVER['argv']) ? $_SERVER['argv'] : array();
     $handle = STDIN;
     $content = null;
-    if ($handle and ftell($handle) === 0 and isset($argv[0]) and basename($argv[0]) != basename(__FILE__)) {
+    $stat = fstat($handle);
+    $mode = ($stat['mode'] & 0170000);
+    // $mode == 0100000 - regular file
+    if (ftell($handle) === 0 and isset($argv[0]) and basename($argv[0]) == 'index.php') {
         $content = '';
-        while (!feof($handle)) $content .= fread($handle, 1024 * 1024);
+        while (true) {
+            $_ = fread($handle, 1024);
+            if ($_ === false) break;
+            $content .= $_;
+        }
     }
     if (!is_null($content)) parse_str(rtrim($content), $parameters);
-    $default_scheme = config("global.default_scheme") ?: "http";
-    $default_host = config("global.default_host") ?: "localhost";
-    $scheme = getenv("SCHEME") ?: $default_scheme;
-    $host = getenv("HOST") ?: $default_host;
+    $scheme = config("global.default_scheme");
+    $host = config("global.default_host");
     $uri = (isset($argv[1]) and (host($argv[1]) or $argv[1][0] === '/')) ? $argv[1] : '/';
     if (!host($uri)) $uri = "{$scheme}://{$host}{$uri}";
     $request = Request::create(

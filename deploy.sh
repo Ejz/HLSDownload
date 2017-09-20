@@ -84,23 +84,24 @@ for var in "${vars[@]}"; do
     eval export "$one"='$temp'
 done
 
-if test "$test"; then
-    exec=("php" "/var/www/${HOST}/phpunit.phar" "-c" "/var/www/${HOST}/phpunit.xml")
-fi
-
-if test "$login"; then
-    exec=("bash")
-fi
-
 BASE="/var/www/${HOST}"
 CGI="$BASE"
 [ -d cgi ] && CGI="${BASE}/cgi"
 [ -t 0 ] && t="t"
-EXEC="$sudo docker exec -i${t} ${DOCKER_NAME_PREFIX}nginx"
+EXEC="$sudo docker exec -i ${DOCKER_NAME_PREFIX}nginx"
+EXEC_T="$sudo docker exec -i${t} ${DOCKER_NAME_PREFIX}nginx"
 EXEC_GH_TOKEN="$sudo docker exec -i${t} ${DOCKER_NAME_PREFIX}nginx env GH_TOKEN=${GH_TOKEN}"
 
+if test "$test"; then
+    exec=($EXEC "php" "/var/www/${HOST}/phpunit.phar" "-c" "/var/www/${HOST}/phpunit.xml")
+elif test "$login"; then
+    exec=($EXEC_T "bash")
+elif test "${#exec[@]}" -gt 0; then
+    exec=($EXEC_T "${exec[@]}")
+fi
+
 if [ "${#exec[@]}" -gt 0 ] && $sudo docker ps --filter "name=^/${DOCKER_NAME_PREFIX}nginx" | grep -q "$DOCKER_NAME_PREFIX"nginx; then
-    $EXEC "${exec[@]}"
+    "${exec[@]}"
     exit "$?"
 fi
 
@@ -119,7 +120,7 @@ if [ "$SQL_HOST" == "yes" ]; then
         -e "MYSQL_RANDOM_ROOT_PASSWORD=yes" -e "MYSQL_DATABASE=${SQL_DB}" \
         -e "MYSQL_USER=${SQL_USER}" -e "MYSQL_PASSWORD=${SQL_PASS}" "$DOCKER_IMAGE_PREFIX"mariadb
     { sleep 2; $sudo docker ps | grep -q "$DOCKER_NAME_PREFIX"mariadb; } || { echo "mariadb failed to run!"; exit 1; }
-    ip=`$sudo docker inspect "$DOCKER_NAME_PREFIX"mariadb | grep '"IPAddress"' | cut -d'"' -f4`
+    ip=`$sudo docker inspect "$DOCKER_NAME_PREFIX"mariadb | grep '"IPAddress"' | cut -d'"' -f4 | head -1`
     SQL_HOST="$ip"
     SQL_PORT=3306
     echo "SQL_HOST=${SQL_HOST}"
@@ -130,7 +131,7 @@ if [ "$ELASTICSEARCH_HOST" == "yes" ]; then
     $sudo docker pull elasticsearch
     $sudo docker run -d --name "$DOCKER_NAME_PREFIX"elasticsearch -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" elasticsearch
     { sleep 2; $sudo docker ps | grep -q "$DOCKER_NAME_PREFIX"elasticsearch; } || { echo "elasticsearch failed to run!"; exit 1; }
-    ip=`$sudo docker inspect "$DOCKER_NAME_PREFIX"elasticsearch | grep '"IPAddress"' | cut -d'"' -f4`
+    ip=`$sudo docker inspect "$DOCKER_NAME_PREFIX"elasticsearch | grep '"IPAddress"' | cut -d'"' -f4 | head -1`
     ELASTICSEARCH_HOST="$ip"
     echo "ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}"
 fi
@@ -138,10 +139,10 @@ fi
 # Start nginx
 $sudo docker pull "$DOCKER_IMAGE_PREFIX"nginx
 $sudo lsof -i -P -n | grep LISTEN | grep -q ':80' || expose="-p 0.0.0.0:80:80"
-$sudo docker run --add-host "$HOST":127.0.0.1 -v "`pwd`":/var/www/"$HOST" ${expose} \
+$sudo docker run -w "$BASE" --add-host "$HOST":127.0.0.1 -v "`pwd`":/var/www/"$HOST" ${expose} \
     --name "$DOCKER_NAME_PREFIX"nginx -d "$DOCKER_IMAGE_PREFIX"nginx
 { sleep 2; $sudo docker ps | grep -q "$DOCKER_NAME_PREFIX"nginx; } || { echo "nginx failed to run!"; exit 1; }
-ip=`$sudo docker inspect "$DOCKER_NAME_PREFIX"nginx | grep '"IPAddress"' | cut -d'"' -f4`
+ip=`$sudo docker inspect "$DOCKER_NAME_PREFIX"nginx | grep '"IPAddress"' | cut -d'"' -f4 | head -1`
 echo "HOST=${ip}"
 
 echo
@@ -176,6 +177,6 @@ if [ "$SQL_HOST" != "no" ]; then
 fi
 
 if [ "${#exec[@]}" -gt 0 ]; then
-    $EXEC "${exec[@]}"
+    "${exec[@]}"
     exit "$?"
 fi

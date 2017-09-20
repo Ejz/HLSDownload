@@ -2,15 +2,30 @@
 
 cd "`dirname "$0"`"
 
-# Install composer itself
+[ "$EUID" -eq "0" ] || { echo "Please, run ${0} with root!"; exit 1; }
+
+if [ "$1" = "--clear" ]; then
+    rm -rf vendor cgi/vendor
+    rm -f composer.phar phar-composer.phar phpunit.phar
+    exit
+fi
+
+# Install Composer
 if [ ! -f "composer.phar" ]; then
     echo "Installing Composer .."
     curl -sS 'https://getcomposer.org/installer' | php
     chmod a+x composer.phar
-    if [ "$EUID" -eq "0" ]; then
-        echo "Moving to /usr/local/bin .."
-        cp composer.phar /usr/local/bin/composer
-    fi
+    echo "Moving to /usr/local/bin .."
+    mv composer.phar /usr/local/bin/composer
+fi
+
+# Install PHAR-Composer
+if [ ! -f "phar-composer.phar" ]; then
+    echo "Installing PHAR-Composer .."
+    wget "https://github.com/clue/phar-composer/releases/download/v1.0.0/phar-composer.phar"
+    chmod a+x phar-composer.phar
+    echo "Moving to /usr/local/bin .."
+    mv phar-composer.phar /usr/local/bin/phar-composer
 fi
 
 # Install PHPUnit
@@ -19,26 +34,18 @@ if [ ! -f "phpunit.phar" ]; then
     ver="5.7"
     wget "https://phar.phpunit.de/phpunit-${ver}.phar" -O phpunit.phar
     chmod a+x phpunit.phar
-    if [ "$EUID" -eq "0" ]; then
-        echo "Moving to /usr/local/bin .."
-        cp phpunit.phar /usr/local/bin/phpunit
-    fi
+    echo "Moving to /usr/local/bin .."
+    mv phpunit.phar /usr/local/bin/phpunit
 fi
 
-# Composer install/update
-if [ -d cgi ]; then
-    cd cgi
-    ../composer.phar config --global github-protocols https
-    [ "$GH_TOKEN" ] && ../composer.phar config -g github-oauth.github.com "$GH_TOKEN"
-    ../composer.phar install
-    ../composer.phar update
-    cd ..
-else
-    ./composer.phar config --global github-protocols https
-    [ "$GH_TOKEN" ] && ./composer.phar config -g github-oauth.github.com "$GH_TOKEN"
-    ./composer.phar install
-    ./composer.phar update
-fi
+# Composer install
+is_cgi=""
+[ -d cgi ] && is_cgi="1"
+test "$is_cgi" && cd cgi
+composer config --global github-protocols https
+[ "$GH_TOKEN" ] && composer config -g github-oauth.github.com "$GH_TOKEN"
+composer install
+test "$is_cgi" && cd ..
 
 # Patch NormalizerFormatter.php
 p1="cgi/vendor/monolog/monolog/src/Monolog/Formatter/NormalizerFormatter.php"

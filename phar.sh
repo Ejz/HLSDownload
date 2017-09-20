@@ -4,13 +4,13 @@ this=`readlink -fe "$0"`
 this_dir=`dirname "$this"`
 cd "$this_dir"
 
-if [ ! -f "phar-composer.phar" ]; then
-    wget "https://github.com/clue/phar-composer/releases/download/v1.0.0/phar-composer.phar"
-    chmod a+x phar-composer.phar
-    test -f "phar-composer.phar" || exit 1
-fi
+echo $PATH
+which phar-composer || { echo "phar-composer is not found in PATH"; exit 1; }
+bin="hlsdownload.phar"
 
-./phar-composer.phar build .
+rm -rf build
+rm -f vendor/ejz/functions/fonts/*
+phar-composer build .
 mkdir -p build
-chmod a+x "$1"
-mv "$1" build/"$1"
+chmod a+x "$bin"
+mv "$bin" build/"$bin"
