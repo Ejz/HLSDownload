@@ -93,7 +93,7 @@ EXEC_T="$sudo docker exec -i${t} ${DOCKER_NAME_PREFIX}nginx"
 EXEC_GH_TOKEN="$sudo docker exec -i${t} ${DOCKER_NAME_PREFIX}nginx env GH_TOKEN=${GH_TOKEN}"
 
 if test "$test"; then
-    exec=($EXEC "php" "/var/www/${HOST}/phpunit.phar" "-c" "/var/www/${HOST}/phpunit.xml")
+    exec=($EXEC "phpunit" "-c" "/var/www/${HOST}/phpunit.xml")
 elif test "$login"; then
     exec=($EXEC_T "bash")
 elif test "${#exec[@]}" -gt 0; then
@@ -107,7 +107,6 @@ fi
 
 $sudo rm -f local.ini cgi/local.ini
 $sudo rm -rf vendor cgi/vendor
-$sudo rm -f composer.phar phpunit.phar
 list=`$sudo docker ps -a --filter "name=^/${DOCKER_NAME_PREFIX}" | awk '{print $1}' | tail -n +2`
 if [ "$list" ]; then
     echo "Delete Docker containers with prefix ${DOCKER_NAME_PREFIX}:"
