@@ -14,7 +14,8 @@ class HLSDownload {
             'decrypt' => true,
             'key' => null,
             'filters' => [],
-            'no-ts' => false,
+            'no_ts' => false,
+            'progress_extra_n' => false,
         ];
         $dir = & $settings['dir'];
         if (!is_dir($dir)) @ mkdir($dir, $mode = 0755, $recursive = true);
@@ -26,9 +27,11 @@ class HLSDownload {
         $dir = rtrim($dir, '/');
         return self::backend($link, $settings);
     }
-    private static function getProgressClosure($w, $h) {
-        $progress = function ($url, $percent) use ($w, $h) {
-            fwrite(STDOUT, "\r{$url}: {$percent}%" . ($percent == 100 ? "\n" : ""));
+    private static function getProgressCallback($progress_extra_n) {
+        $progress = function ($url, $percent) use ($progress_extra_n) {
+            $n = $progress_extra_n ? "\n" : '';
+            $n100 = $percent == 100 ? "\n" : "";
+            fwrite(STDOUT, "\r{$url} ~ {$percent}%" . $n . $n100);
         };
         return function ($ch, $total, $download) use ($progress) {
             static $last = null;
@@ -60,20 +63,20 @@ class HLSDownload {
             CURLOPT_TIMEOUT => 120,
             'checker' => [200, 201, 202],
         ];
-        if (false and defined('STDOUT') and posix_isatty(STDOUT)) {
-            $curl_settings[CURLOPT_NOPROGRESS] = false;
-            $wh = trim(shell_exec('echo -ne \'\\033[18t\' && IFS=\';\' read -n999 -dt -t1 -s csi h w && echo "${w}x${h}"'));
-            list($w, $h) = explode('x', $wh);
-            $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressClosure($w, $h);
-        }
         // if ($settings['headers'] and is_array($settings['headers'])) {
         //     $curl_settings[CURLOPT_HTTPHEADER] = $settings['headers'];
         // }
+        $progress = (defined('STDOUT') and posix_isatty(STDOUT));
+        $progress = ($progress or !empty($settings['progress']));
+        if ($progress) {
+            $curl_settings[CURLOPT_NOPROGRESS] = false;
+            $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressCallback($settings['progress_extra_n']);
+        }
         if (preg_match('~^(\d+)\s*(k|m|g)$~i', @ $settings['limit_rate'], $match)) {
             if (defined('CURLOPT_MAX_RECV_SPEED_LARGE')) {
                 $m = array('k' => pow(2, 10), 'm' => pow(2, 20), 'g' => pow(2, 30));
                 $curl_settings[CURLOPT_MAX_RECV_SPEED_LARGE] = intval($match[1]) * $m[strtolower($match[2])];
-            } else return _log(__CLASS__ . ": CURLOPT_MAX_RECV_SPEED_LARGE is not defined!");
+            } else return _warn(__CLASS__ . ": CURLOPT_MAX_RECV_SPEED_LARGE is not defined!");
         }
         $cache = $dir . $settings['cache'];
         @ mkdir($cache, $mode = 0755, $recursive = true);
@@ -83,7 +86,7 @@ class HLSDownload {
             $file = $cache . '/' . md5($link);
             if (!is_file($file)) {
                 $content = curl($link, $curl_settings);
-                if (!$content) return _warn("Error while getting {$link}");
+                if (!$content) return _warn(__CLASS__ . ": Error while getting {$link}");
                 file_put_contents($file, $content);
             }
             return file_get_contents($file);
@@ -93,15 +96,16 @@ class HLSDownload {
         // either manifest or ts
         $is_manifest = (strpos($content, '#EXTM3U') === 0);
         if (!$is_manifest) {
-            if ($settings['no-ts']) return false;
+            if ($settings['no_ts']) return false;
             $target = $dir . '/' . $ts_name;
             echo "{$link} -> {$target}\n";
+            @ unlink($target);
             $_ = file_put_contents($target, $content);
             if (!$settings['key'] or !$_) return $_ > 0;
             rename($target, $target = $target . '.tmp');
             $error = self::decrypt($target, $settings['key']);
             if ($error)
-                return _warn("Error while decrypting {$link}; {$error}");
+                return _warn(__CLASS__ . ": Error while decrypting {$link}; {$error}");
             return rename($target, substr($target, 0, -4));
         }
         $collect = [];
@@ -144,13 +148,13 @@ class HLSDownload {
                     continue;
                 }
                 if (!$base64) $uri = realurl($uri, $link);
-                if ($settings['no-ts']) {
+                if ($settings['no_ts']) {
                     $meta['uri'] = $uri;
                     $collect[] = self::compileLine($meta);
                     continue;
                 }
                 $uri_content = $base64 ? base64_decode(substr($uri, strlen($_base64))) : $getter($uri);
-                $err = "Error getting key from {$line}";
+                $err = __CLASS__ . ": Error getting key from {$line}";
                 if ($settings['decrypt']) {
                     if (!$uri_content) return _warn($err);
                     $uri_content = bin2hex($uri_content);
@@ -203,10 +207,10 @@ class HLSDownload {
             if ($extinf) {
                 $line = realurl($line, $link);
                 $ts_name = sprintf("chunk%05s.ts", $ts_count);
-                if ($settings['no-ts'] and is_file($link)) {
-                    @ unlink($dir . '/' . $ts_name);
-                    symlink(realpath($link), $dir . '/' . $ts_name);
-                } elseif ($settings['no-ts']) {
+                if ($settings['no_ts'] and is_file($link)) {
+                    if (!is_file($line)) _warn(__CLASS__ . ": File is not found {$line}");
+                    else copy($line, $dir . '/' . $ts_name);
+                } elseif ($settings['no_ts']) {
                     $ts_name = $line;
                 } else
                     $return = self::backend(
@@ -233,20 +237,19 @@ class HLSDownload {
                 $ext_x_stream_inf = false;
                 continue;
             }
-            _warn("Parse error in {$link}; Line: {$line}");
+            _warn(__CLASS__ . ": Parse error in {$link}; Line: {$line}");
         }
         if ($extinf or $ext_x_stream_inf)
-            _warn("Invalid M3U8 ending at {$link}");
+            _warn(__CLASS__ . ": Invalid M3U8 ending at {$link}");
         $collect = implode("\n", $collect) . "\n";
         $is_master = (strpos($collect, "\n#EXT-X-STREAM-INF:") !== false);
         $target = $dir . '/' . ($is_master ? $manifest_name : $stream_name);
         echo "{$link} -> {$target}\n";
-        $files = scandir($cache);
-        foreach ($files as $file) {
+        foreach ((is_dir($cache) ? scandir($cache) : []) as $file) {
             if ($file === '.' or $file === '..') continue;
-            unlink($cache . '/' . $file);
+            @ unlink($cache . '/' . $file);
         }
-        rmdir($cache);
+        if (is_dir($cache)) rmdir($cache);
         return file_put_contents($target, $collect) > 0;
     }
     private static function compileLine($meta) {
