@@ -6,17 +6,6 @@ define('VERSION', '1.4.1');
 define('AUTHOR', 'Evgeny Cernisev <ejz@ya.ru>');
 require(ROOT . '/../vendor/autoload.php');
 
-// $loop = React\EventLoop\Factory::create();
-// $loop->addTimer(10, function () {
-//     echo 'world!' . PHP_EOL;
-// });
-// $loop->addTimer(0.5, function () {
-//     echo 'hello ';
-// });
-// $loop->run();
-// echo 1, "\n";
-// exit();
-
 use Ejz\HLSDownload;
 
 if (version_compare('5.6.0', PHP_VERSION, '>'))
@@ -66,26 +55,62 @@ $res = HLSDownload::go($opts[1], [
 if (isset($opts['thread'])) exit($res ? 0 : 1);
 $thread = 0;
 $threads = [];
+
+// [-2, 0, 5] => [0, 1, 5]
+function normalize_positions(& $positions, $base = 0) {
+    $min = min($positions);
+    if ($min >= $base) return;
+    foreach ($positions as & $position) $position += ($base - $min);
+    foreach (array_keys($positions) as $key) {
+        $position = & $positions[$key];
+        for ($i = $position - ($base - $min); $i < $position; $i++)
+            if ($i >= $base and array_search($i, $positions, true) === false) {
+                $position = $i;
+                break;
+            }
+    }
+}
+
+// $pos = 
+// $pos = [-2, 1, 5, -1]; // 0, 1, 5
+// normalize_positions($pos);
+// var_dump($pos);
+// exit();
 // $pid = posix_getpid();
 // var_dump($pid);
 // sleep(1000);
 // $wh = trim(shell_exec('echo -ne \'\\033[18t\' && IFS=\';\' read -n999 -dt -t1 -s csi h w && echo "${w}x${h}"'));
 // list($w, $h) = explode('x', $wh);
-$echoCallback = function ($thread) use (& $threads) {
+$cols = intval(`tput cols`);
+$lines = intval(`tput lines`);
+$depth = 0;
+$echoCallback = function ($thread) use (& $threads, & $depth) {
     $prefix_format = "(Thread #%s): ";
-    return function ($chunk, $exit = false) use ($thread, & $threads, $prefix_format) {
+    return function ($chunk, $exit = false) use ($thread, & $threads, $prefix_format, & $depth) {
         $echo_prefix = sprintf($prefix_format, $thread);
         $buffer = & $threads[$thread]['buffer'];
         $buffer .= $chunk;
-        $lines = preg_split('/(\\n)/', $buffer, -1, PREG_SPLIT_DELIM_CAPTURE);
+        $lines = preg_split('/(\\n+)/', $buffer, -1, PREG_SPLIT_DELIM_CAPTURE);
         for ($i = 0; $i < count($lines); $i++) {
             $line = $lines[$i];
             $prev = (isset($lines[$i - 1]) ? $lines[$i - 1] : '');
-            if ($line != "\n") continue;
+            if (!$line or $line[0] != "\n") continue;
             if ($prev and $prev[0] === "\r") {
-                // если есть позиция, выставить и echo
-                echo "\r" . $echo_prefix . substr($prev, 1);
-            } else echo $echo_prefix . $prev . "\n";
+                $pos = isset($threads[$thread]['pos']) ? $threads[$thread]['pos'] : $depth;
+                if (!isset($threads[$thread]['pos'])) {
+                    echo "\n";
+                    $depth += 1;
+                    $threads[$thread]['pos'] = $pos;
+                }
+                echo "\033[s";
+                if ($_ = ($depth - $pos)) echo "\033[{$_}A";
+                echo "\033[2K\r" . $echo_prefix . substr($prev, 1);
+                echo "\033[u";
+                if (strlen($line) > 1) unset($threads[$thread]['pos']);
+            } else {
+                echo $echo_prefix . $prev . "\n";
+                $depth += 1;
+            }
         }
         if (count($lines) > 1) {
             $len = array_sum(array_map('strlen', array_slice($lines, 0, -1)));
@@ -115,14 +140,14 @@ foreach (scandir($dir) as $elem) {
     $exec = implode(' ', $exec);
     $process = new React\ChildProcess\Process($exec);
     $process->start($loop);
-    $threads[$thread] = ['buffer' => '', 'position' => null];
+    $threads[$thread] = ['buffer' => ''];
     $callback = $echoCallback($thread);
     $process->stdout->on('data', $callback);
     $process->stderr->on('data', $callback);
     $process->on('exit', function($code, $term) use ($callback) {
         $callback("Exited with code " . $code . "\n", $exit = true);
     });
-    $callback("Initiated" . "\n");
+    $callback("Started!" . "\n");
 
     // unset($pipes);
     // $handler = proc_open($exec, $descriptors, $pipes, null, null);
