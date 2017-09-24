@@ -42,7 +42,9 @@ if (isset($opts['F'])) $settings['filters'] = $opts['F'];
 if (isset($opts['limit-rate'])) $settings['limit_rate'] = $opts['limit-rate'];
 $settings['decrypt'] = !isset($opts['no-decrypt']);
 
-$def = (defined('STDOUT') and posix_isatty(STDOUT));
+$width = intval(`tput cols 2>/dev/null`);
+$height = intval(`tput lines 2>/dev/null`) - 1;
+$def = (defined('STDOUT') and posix_isatty(STDOUT) and $width and $height);
 $keys = array_keys($opts);
 $ep = !empty($opts['progress']);
 $dp = !empty($opts['no-progress']);
@@ -76,8 +78,7 @@ function normalize_threads_positions(& $threads, $base = 0) {
     };
     $rec($pos, $base);
 }
-$width = intval(`tput cols`);
-$height = intval(`tput lines`) - 1;
+
 $depth = 0;
 $echoCallback = function ($thread) use (& $threads, & $depth, $height, $width) {
     $prefix_format = "(#%s) ";
