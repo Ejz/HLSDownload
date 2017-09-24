@@ -15,6 +15,7 @@ class HLSDownload {
             'key' => null,
             'filters' => [],
             'no_ts' => false,
+            'level' => 0,
             'progress_extra_n' => false,
         ];
         $dir = & $settings['dir'];
@@ -28,10 +29,16 @@ class HLSDownload {
         return self::backend($link, $settings);
     }
     private static function getProgressCallback($progress_extra_n) {
-        $progress = function ($url, $percent) use ($progress_extra_n) {
+        $progress = function ($url, $percent, $total) use ($progress_extra_n) {
             $n = $progress_extra_n ? "\n" : '';
             $n100 = $percent == 100 ? "\n" : "";
-            fwrite(STDOUT, "\r{$url} ~ {$percent}%" . $n . $n100);
+            $total = round($total / 1024);
+            if ($total >= 1000) {
+                $total = round($total / 1000, 1);
+                $total = $total == intval($total) ? $total . '.0' : $total;
+                $total .= 'M';
+            } else $total .= 'K';
+            fwrite(STDOUT, "\r{$url} ~ {$percent}% ({$total})" . $n . $n100);
         };
         return function ($ch, $total, $download) use ($progress) {
             static $last = null;
@@ -40,18 +47,19 @@ class HLSDownload {
             $percent = round((100 * $download) / $total);
             if ($percent < 0) $percent = 0;
             if ($percent > 100) $percent = 100;
-            if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent != 100) return;
+            if (!is_null($last) and round(microtime(true) - $last, 1) < 2.2 and $percent != 100) return;
             $last = microtime(true);
             $info = curl_getinfo($ch);
             $url = $info['url'];
             if ($done) return;
             if ($percent == 100) $done = true;
-            $progress($url, $percent);
+            $progress($url, $percent, $total);
         };
     }
     private static function backend($link, $settings) {
         $link = (is_file($link) ? $link : realurl($link));
         $dir = & $settings['dir'];
+        $level = $settings['level'];
         @ $manifest_name = $settings['manifest_name'];
         if (!$manifest_name) $manifest_name = 'manifest.m3u8';
         @ $stream_name = $settings['stream_name'];
@@ -66,8 +74,8 @@ class HLSDownload {
         // if ($settings['headers'] and is_array($settings['headers'])) {
         //     $curl_settings[CURLOPT_HTTPHEADER] = $settings['headers'];
         // }
-        $progress = (defined('STDOUT') and posix_isatty(STDOUT));
-        $progress = ($progress or !empty($settings['progress']));
+        $progress_default = (defined('STDOUT') and posix_isatty(STDOUT));
+        $progress = (!isset($settings['progress']) or is_null($settings['progress'])) ? $progress_default : (bool)($settings['progress']);
         if ($progress) {
             $curl_settings[CURLOPT_NOPROGRESS] = false;
             $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressCallback($settings['progress_extra_n']);
@@ -96,7 +104,7 @@ class HLSDownload {
         // either manifest or ts
         $is_manifest = (strpos($content, '#EXTM3U') === 0);
         if (!$is_manifest) {
-            if ($settings['no_ts']) return false;
+            if ($settings['no_ts'] and $level) return false;
             $target = $dir . '/' . $ts_name;
             echo "{$link} -> {$target}\n";
             @ unlink($target);
@@ -128,8 +136,8 @@ class HLSDownload {
             $filter = call_user_func_array('array_intersect', $col);
         elseif ($filters) $filter = $col[0];
         $settings['key'] = null;
-        $ts_count = -1;
-        $stream_count = -1;
+        $ts_count = isset($settings['ts_count']) ? $settings['ts_count'] : -1;
+        $stream_count = isset($settings['stream_count']) ? $settings['stream_count'] : -1;
         foreach (nsplit($content) as $line) {
             if (strpos($line, $str = '#EXT-X-MEDIA-SEQUENCE:') === 0) {
                 $collect[] = $line;
@@ -214,7 +222,7 @@ class HLSDownload {
                     $ts_name = $line;
                 } else
                     $return = self::backend(
-                        $line, ['ts_name' => $ts_name] + $settings
+                        $line, ['ts_name' => $ts_name, 'level' => $level + 1] + $settings
                     );
                 $collect[] = $ts_name;
                 $extinf = false;
@@ -229,6 +237,7 @@ class HLSDownload {
                     $return = self::backend(
                         $line, [
                             'stream_name' => basename($stream_name),
+                            'level' => $level + 1,
                             'dir' => $new_dir,
                         ] + $settings
                     );
@@ -243,6 +252,7 @@ class HLSDownload {
             _warn(__CLASS__ . ": Invalid M3U8 ending at {$link}");
         $collect = implode("\n", $collect) . "\n";
         $is_master = (strpos($collect, "\n#EXT-X-STREAM-INF:") !== false);
+        $stream_name = !isset($settings['stream_count']) ? $stream_name : sprintf("stream%s.m3u8", $settings['stream_count']);
         $target = $dir . '/' . ($is_master ? $manifest_name : $stream_name);
         echo "{$link} -> {$target}\n";
         foreach ((is_dir($cache) ? scandir($cache) : []) as $file) {
