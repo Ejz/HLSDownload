@@ -7,4 +7,9 @@ cd "$this_dir"
 set -e
 SQL_HOST=no ./deploy.sh --defaults --test
 ./deploy.sh -D -e ./phar.sh
-./gitci.sh "build/hlsdownload.phar" "Update build [skip ci]"
+set +e
+if ./gitci.sh --is-release; then
+	next=`./gitci.sh --next-tag`
+	cp build/hlsdownload.phar build/hlsdownload-"$next".phar
+	./gitci.sh "build/hlsdownload.phar build/hlsdownload-{$next}.phar" "Release [skip ci]"
+fi
