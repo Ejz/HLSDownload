@@ -47,7 +47,7 @@ class HLSDownload {
             $percent = round((100 * $download) / $total);
             if ($percent < 0) $percent = 0;
             if ($percent > 100) $percent = 100;
-            if (!is_null($last) and round(microtime(true) - $last, 1) < 2.2 and $percent != 100) return;
+            if (!is_null($last) and round(microtime(true) - $last, 1) < 3.5 and $percent != 100) return;
             $last = microtime(true);
             $info = curl_getinfo($ch);
             $url = $info['url'];

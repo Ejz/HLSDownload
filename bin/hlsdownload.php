@@ -46,7 +46,7 @@ $width = intval(`tput cols 2>/dev/null`);
 $height = intval(`tput lines 2>/dev/null`) - 1;
 $def = (defined('STDOUT') and posix_isatty(STDOUT) and $width and $height);
 if (!$width) $width = 80;
-if (!$height) $height = 25;
+if (!$height) $height = 25 - 1;
 $keys = array_keys($opts);
 $ep = !empty($opts['progress']);
 $dp = !empty($opts['no-progress']);
@@ -82,18 +82,21 @@ function normalize_threads_positions(& $threads, $base = 0) {
 }
 
 $depth = 0;
-$echoCallback = function ($thread) use (& $threads, & $depth, $height, $width) {
-    $prefix_format = "(#%s) ";
-    return function ($chunk, $exit = false) use ($thread, & $threads, $prefix_format, & $depth, $height, $width) {
+$echoCallback = function ($thread) use (& $threads, & $depth, $height, $width, $progress) {
+    $prefix_format = "(#%s)";
+    return function ($chunk, $exit = false) use ($thread, & $threads, $prefix_format, & $depth, $height, $width, $progress) {
         $echo_prefix = sprintf($prefix_format, $thread);
         $buffer = & $threads[$thread]['buffer'];
         $buffer .= $chunk;
-        $trunc = function ($s) use ($width) {
-            return str_truncate($s, $width, $center = false, $replacer = '..');
+        $trunc = function ($s, $width) {
+            if (strlen($s) <= $width) return $s;
+            $replacer = '..';
+            $width -= strlen($replacer);
+            return $replacer . mb_substr($s, - $width);
         };
-        // echo mt_rand() . "\n";
-        // $depth += 1;
-        // normalize_threads_positions($threads, $depth - $height + 0);
+        echo mt_rand() . "\n";
+        $depth += 1;
+        normalize_threads_positions($threads, $depth - $height + 0);
         $lines = preg_split('/(\\n+)/', $buffer, -1, PREG_SPLIT_DELIM_CAPTURE);
         for ($i = 0; $i < count($lines); $i++) {
             $line = $lines[$i];
@@ -107,13 +110,23 @@ $echoCallback = function ($thread) use (& $threads, & $depth, $height, $width) {
                     $threads[$thread]['pos'] = $pos;
                     normalize_threads_positions($threads, $depth - $height + 0);
                 }
-                $msg = $trunc($echo_prefix . substr($prev, 1));
+                $end = (strlen($line) > 1);
+                $msg = sprintf(
+                    "%s%s%s %s",
+                    $end ? '' : "\033[7m",
+                    $echo_prefix,
+                    $end ? '' : "\033[0m",
+                    substr($prev, 1)
+                    // $trunc(substr($prev, 1), $width - strlen($echo_prefix) - 1) // -1 for space
+                );
                 $threads[$thread]['status'] = "\033[s\033[%moveup%A\033[2K\r" . $msg . "\033[u";
-                $threads[$thread]['end'] = (strlen($line) > 1);
+                $threads[$thread]['end'] = $end;
             } else {
-                echo $trunc($echo_prefix . $prev) . "\n";
-                $depth += 1;
-                normalize_threads_positions($threads, $depth - $height + 0);
+                echo $echo_prefix . ' ' . $prev . "\n";
+                if ($progress) {
+                    $depth += 1; // + intval(strlen($echo_prefix . $prev) / $width);
+                    normalize_threads_positions($threads, $depth - $height + 0);
+                }
             }
         }
         if (count($lines) > 1) {
@@ -121,9 +134,10 @@ $echoCallback = function ($thread) use (& $threads, & $depth, $height, $width) {
             $buffer = substr($buffer, $len);
         }
         if ($exit) {
-            echo $trunc($buffer ? ($echo_prefix . $buffer) : '');
+            echo ($buffer ? ($echo_prefix . ' ' . $buffer) : '');
             $buffer = '';
         }
+        if (!$progress) return;
         foreach ($threads as & $t) {
             if (!isset($t['status'])) continue;
             echo str_replace('%moveup%', $depth - $t['pos'], $t['status']);
@@ -191,24 +205,3 @@ $ob = ob_get_clean();
 fwrite(STDERR, $ob);
 
 exit(1);
-
-
-// 1
-// 2
-// 3
-// 4
-// 5
-
-// 5
-// 3
-// 1
-// 4
-// 2
-
-// (Thread #5): http://hlsdownload.dev/case1/v2/one.ts ~ 20% moveup=42, pos=173, thread=2
-// (Thread #3): http://hlsdownload.dev/case1/v2/one.ts ~ 20% moveup=41, pos=174, thread=2
-// (Thread #1): http://hlsdownload.dev/case1/v1/one.ts ~ 20% moveup=38, pos=175, thread=1
-// (Thread #1): http://hlsdownload.dev/case1/v1/one.ts ~ 20% moveup=38, pos=176, thread=4
-// (Thread #1): http://hlsdownload.dev/case1/v1/one.ts ~ 20% moveup=38, pos=177, thread=2
-// (Thread #4): http://hlsdownload.dev/case1/v2/one.ts ~ 20% moveup=37, pos=178, thread=2
-// (Thread #2): http://hlsdownload.dev/case1/v2/one.ts ~ 20% moveup=36, pos=179, thread=2
