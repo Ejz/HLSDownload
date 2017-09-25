@@ -22,6 +22,7 @@ $opts = getopts([
     'no-ts' => false,
     'no-decrypt' => false,
     'limit-rate' => true,
+    'width' => true,
     'progress' => false,
     'no-progress' => false,
     'thread' => true, // for multitheading purposes
@@ -41,15 +42,17 @@ if (isset($opts['F'])) $settings['filters'] = $opts['F'];
 if (isset($opts['limit-rate'])) $settings['limit_rate'] = $opts['limit-rate'];
 $settings['decrypt'] = !isset($opts['no-decrypt']);
 
-if (getenv("TERM")) {
+if (isset($opts['width']))
+    $width = intval($opts['width']);
+elseif (getenv("TERM")) {
     $width = intval(`tput cols`);
-    $height = intval(`tput lines`);
 }
+
+if (getenv("TERM")) $height = intval(`tput lines`);
 
 $def = (defined('STDOUT') and posix_isatty(STDOUT) and !empty($width) and !empty($height));
 if (empty($width)) $width = 80;
 if (empty($height)) $height = 25;
-// $height -= 1; // one line is kept for empty line
 $keys = array_keys($opts);
 $ep = !empty($opts['progress']);
 $dp = !empty($opts['no-progress']);
@@ -58,8 +61,6 @@ $progress = (
     ($ep and !$dp) or
     ($ep and $dp and (array_search('progress', $keys, true) > array_search('no-progress', $keys, true)))
 );
-// $h = $height + 1;
-// if ($progress) echo "Terminal size: {$width}x{$h}\n";
 $prefix_format = "(#%s) ";
 $settings['progress'] = $progress;
 $settings['progress_extra_n'] = isset($opts['progress-extra-n']);
@@ -73,10 +74,10 @@ $thread = 0;
 $threads = [];
 
 // [-2, 0, 5] => [0, 1, 5]
-function normalize_threads_positions(& $threads, $base = 0) {
+function normalize_status_pos(& $threads, $base = 0) {
     $pos = [];
     foreach ($threads as & $thread)
-        if (isset($thread['pos'])) $pos[] = & $thread['pos'];
+        if (isset($thread['status']['pos'])) $pos[] = & $thread['status']['pos'];
     sort($pos);
     $rec = function (& $pos, $base) use (& $rec) {
         if (!$pos) return;
@@ -88,30 +89,35 @@ function normalize_threads_positions(& $threads, $base = 0) {
     $rec($pos, $base);
 }
 
-function tty_make_bold($string, $start = '(', $end = ')') {
-    $s = preg_quote($start, '~');
-    $e = preg_quote($end, '~');
-    return preg_replace("~({$s}.*?{$e})~", "\033[7m$1\033[0m", $string);
+function tty_make($string, $color) {
+    return preg_replace("~(\(.*?\))~", "{$color}$1\033[0m", $string);
+}
+
+function tty_make_bold($string) {
+    return tty_make($string, "\033[7m");
+}
+
+function tty_make_green($string) {
+    return tty_make($string, "\033[1;15;42m");
+}
+
+function tty_make_red($string) {
+    return tty_make($string, "\033[1;15;41m");
 }
 
 $depth = 0;
 $echoCallback = function ($thread) use (
         & $threads, & $depth, $height, $width, $prefix_format
     ) {
+    $threads[$thread]['prefix'] = sprintf($prefix_format, $thread);
     return function ($chunk, $exit = false) use (
-        $thread, & $threads, $prefix_format, & $depth, $height, $width, $prefix_format
+        $thread, & $threads, & $depth, $height, $width
     ) {
         $t = & $threads[$thread];
-        $echo_prefix = sprintf($prefix_format, $thread);
+        $echo_prefix = $t['prefix'];
         $buffer = & $t['buffer'];
         $buffer .= $chunk;
-        // echo mt_rand() . "\n";
-        // $depth += 1;
-        // normalize_threads_positions($threads, $depth - $height + 1);
         $lines = preg_split('/(\n|\e\[u)/', $buffer, -1, PREG_SPLIT_DELIM_CAPTURE);
-        $lines['thread'] = $thread . '';
-        file_put_contents('/tmp/lines', print_r(array_map('json_encode', $lines), 1), FILE_APPEND);
-        unset($lines['thread']);
         for ($i = 0; $i < count($lines); $i++) {
             $line = $lines[$i];
             $prev = (isset($lines[$i - 1]) ? $lines[$i - 1] : '');
@@ -121,27 +127,21 @@ $echoCallback = function ($thread) use (
                 $status = & $t['status'];
                 preg_match('!\r(\S+) ~ (\S+) \(!', $prev, $match);
                 if (!$match) continue;
-                $status['percent'] = $match[2];
+                $status['percent'] = intval($match[2]);
                 $msg = str_replace("\033[1A", "\033[%moveup%A", $prev . $line);
-                // $msg = str_replace("\r", "\r" . , $msg);
                 $status['msg'] = $msg;
-                // if (isset($threads[$thread]['url']) and $url != $threads[$thread]['url']) {
-                //     $threads[$thread]['pos'] = $depth - 1;
-                // }
-                // $threads[$thread]['msg'] = $msg;
-                // $threads[$thread]['end'] = $end;
-                // $threads[$thread]['url'] = $url;
             }
             if ($line[0] == "\n") {
                 if (isset($t['status'])) {
-                    echo str_replace('%moveup%', $depth - $_['pos'], $_['msg']);
-                    if (intval($s['percent']) == 100) unset($t['status']);
+                    $s = $t['status'];
+                    $s['msg'] = str_replace('%moveup%', $depth - $s['pos'], $s['msg']);
+                    $_ = $s['percent'] == 100 ? tty_make_green($echo_prefix) : tty_make_red($echo_prefix);
+                    echo str_replace("\r", "\r" . $_, $s['msg']);
                     unset($t['status']);
                 }
                 echo $echo_prefix . $prev . "\n";
-                file_put_contents('/tmp/lines', $echo_prefix . $prev . "\n", FILE_APPEND);
                 $depth += 1 + intval(strlen($echo_prefix . $prev) / $width);
-                normalize_threads_positions($threads, $depth - $height + 1);
+                normalize_status_pos($threads, $depth - $height + 1);
             }
         }
         if (count($lines) > 1) {
@@ -156,16 +156,9 @@ $echoCallback = function ($thread) use (
         }
         foreach ($threads as $_) {
             if (!isset($_['status'])) continue;
-            $_ = $_['status'];
-            $msg = $_['msg'];
-            echo str_replace('%moveup%', $depth - $_['pos'], $msg);
-            tty_make_bold($echo_prefix)
-            // file_put_contents('/tmp/lines', str_replace('%moveup%', $depth - $t['pos'], $t['msg']) . "\n", FILE_APPEND);
-            // if ($t['end']) {
-            //     unset($t['pos']);
-            //     unset($t['msg']);
-            //     unset($t['url']);
-            // }
+            $s = $_['status'];
+            $s['msg'] = str_replace('%moveup%', $depth - $s['pos'], $s['msg']);
+            echo str_replace("\r", "\r" . tty_make_bold($_['prefix']), $s['msg']);
         }
     };
 };
@@ -184,6 +177,8 @@ foreach (scandir($dir) as $elem) {
     $argv_[] = "-thread";
     $argv_[] = $thread;
     $argv_[] = $progress ? '-progress' : '-no-progress';
+    $argv_[] = '-width';
+    $argv_[] = $width;
     $argv_[array_search($opts[1], $argv_, true)] = is_file($target) ? $target : "{$target}/{$elem}.m3u8";
     $exec = array_map('escapeshellarg', $argv_);
     $exec = implode(' ', $exec);
