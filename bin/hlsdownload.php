@@ -2,7 +2,7 @@
 <?php
 
 define('ROOT', __DIR__);
-define('VERSION', '1.4.1');
+define('VERSION', '__VERSION__');
 define('AUTHOR', 'Evgeny Cernisev <ejz@ya.ru>');
 require(ROOT . '/../vendor/autoload.php');
 
@@ -24,7 +24,6 @@ $opts = getopts([
     'limit-rate' => true,
     'progress' => false,
     'no-progress' => false,
-    'progress-extra-n' => false,
     'thread' => true, // for multitheading purposes
 ], $argv);
 
@@ -102,8 +101,9 @@ $echoCallback = function ($thread) use (
     return function ($chunk, $exit = false) use (
         $thread, & $threads, $prefix_format, & $depth, $height, $width, $prefix_format
     ) {
+        $t = & $threads[$thread];
         $echo_prefix = sprintf($prefix_format, $thread);
-        $buffer = & $threads[$thread]['buffer'];
+        $buffer = & $t['buffer'];
         $buffer .= $chunk;
         // echo mt_rand() . "\n";
         // $depth += 1;
@@ -117,24 +117,27 @@ $echoCallback = function ($thread) use (
             $prev = (isset($lines[$i - 1]) ? $lines[$i - 1] : '');
             if (!$line) continue;
             if ($line == "\e[u") {
-                $pos = isset($threads[$thread]['pos']) ? $threads[$thread]['pos'] : $depth - 1;
-                if (!isset($threads[$thread]['pos'])) $threads[$thread]['pos'] = $pos;
+                if (!isset($t['status'])) $t['status'] = ['pos' => $depth - 1];
+                $status = & $t['status'];
                 preg_match('!\r(\S+) ~ (\S+) \(!', $prev, $match);
-                $url = $match[1];
-                $percent = $match[2];
-                $end = (intval($percent) == 100);
+                if (!$match) continue;
+                $status['percent'] = $match[2];
                 $msg = str_replace("\033[1A", "\033[%moveup%A", $prev . $line);
-                $_ = $end ? $echo_prefix : tty_make_bold($echo_prefix);
-                $msg = str_replace("\r", "\r" . $_, $msg);
-                if (isset($threads[$thread]['url']) and $url != $threads[$thread]['url']) {
-                    $end = true;
-                    $threads[$thread]['pos'] = $threads[$thread]['newpos'] = $depth - 1;
-                }
-                $threads[$thread]['msg'] = $msg;
-                $threads[$thread]['end'] = $end;
-                $threads[$thread]['url'] = $url;
+                // $msg = str_replace("\r", "\r" . , $msg);
+                $status['msg'] = $msg;
+                // if (isset($threads[$thread]['url']) and $url != $threads[$thread]['url']) {
+                //     $threads[$thread]['pos'] = $depth - 1;
+                // }
+                // $threads[$thread]['msg'] = $msg;
+                // $threads[$thread]['end'] = $end;
+                // $threads[$thread]['url'] = $url;
             }
             if ($line[0] == "\n") {
+                if (isset($t['status'])) {
+                    echo str_replace('%moveup%', $depth - $_['pos'], $_['msg']);
+                    if (intval($s['percent']) == 100) unset($t['status']);
+                    unset($t['status']);
+                }
                 echo $echo_prefix . $prev . "\n";
                 file_put_contents('/tmp/lines', $echo_prefix . $prev . "\n", FILE_APPEND);
                 $depth += 1 + intval(strlen($echo_prefix . $prev) / $width);
@@ -151,19 +154,18 @@ $echoCallback = function ($thread) use (
             $depth += intval(strlen($_) / $width);
             $buffer = '';
         }
-        foreach ($threads as & $t) {
-            if (!isset($t['msg'])) continue;
-            echo str_replace('%moveup%', $depth - $t['pos'], $t['msg']);
-            file_put_contents('/tmp/lines', str_replace('%moveup%', $depth - $t['pos'], $t['msg']) . "\n", FILE_APPEND);
-            if ($t['end']) {
-                unset($t['pos']);
-                unset($t['msg']);
-                unset($t['url']);
-            }
-            if (isset($t['newpos'])) {
-                $t['pos'] = $t['newpos'];
-                unset($t['newpos']);
-            }
+        foreach ($threads as $_) {
+            if (!isset($_['status'])) continue;
+            $_ = $_['status'];
+            $msg = $_['msg'];
+            echo str_replace('%moveup%', $depth - $_['pos'], $msg);
+            tty_make_bold($echo_prefix)
+            // file_put_contents('/tmp/lines', str_replace('%moveup%', $depth - $t['pos'], $t['msg']) . "\n", FILE_APPEND);
+            // if ($t['end']) {
+            //     unset($t['pos']);
+            //     unset($t['msg']);
+            //     unset($t['url']);
+            // }
         }
     };
 };
@@ -182,7 +184,6 @@ foreach (scandir($dir) as $elem) {
     $argv_[] = "-thread";
     $argv_[] = $thread;
     $argv_[] = $progress ? '-progress' : '-no-progress';
-    if ($progress) $argv_[] = '-progress-extra-n';
     $argv_[array_search($opts[1], $argv_, true)] = is_file($target) ? $target : "{$target}/{$elem}.m3u8";
     $exec = array_map('escapeshellarg', $argv_);
     $exec = implode(' ', $exec);
@@ -214,34 +215,13 @@ Downloads recursively HLS file.
 
 Options:
 
-    -F, --filters <filter>    Filter M3U8 streams, ex: bandwidth=max
-    -d, --directory <dir>     Target directory
+    -d, --directory <dir>     Target directory, by default CWD
+    -F, --filters <filter>    Filter M3U8 streams, ex: Bandwidth=MAX
     --limit-rate <speed>      Limit download speed (can use K, M, G)
-    --no-decrypt              Turn off decryption
-    --no-ts                   Download just manifests
+    --no-decrypt              Turn off decryption (enabled by default)
+    --no-ts                   Download just manifests (TS links are normalized)
 ";
 $ob = ob_get_clean();
 fwrite(STDERR, $ob);
 
 exit(1);
-
-
-// 1
-// 2
-// 3
-// 4
-// 5
-
-// 5
-// 3
-// 1
-// 4
-// 2
-
-// (Thread #5): http://hlsdownload.dev/case1/v2/one.ts ~ 20% moveup=42, pos=173, thread=2
-// (Thread #3): http://hlsdownload.dev/case1/v2/one.ts ~ 20% moveup=41, pos=174, thread=2
-// (Thread #1): http://hlsdownload.dev/case1/v1/one.ts ~ 20% moveup=38, pos=175, thread=1
-// (Thread #1): http://hlsdownload.dev/case1/v1/one.ts ~ 20% moveup=38, pos=176, thread=4
-// (Thread #1): http://hlsdownload.dev/case1/v1/one.ts ~ 20% moveup=38, pos=177, thread=2
-// (Thread #4): http://hlsdownload.dev/case1/v2/one.ts ~ 20% moveup=37, pos=178, thread=2
-// (Thread #2): http://hlsdownload.dev/case1/v2/one.ts ~ 20% moveup=36, pos=179, thread=2

@@ -60,7 +60,7 @@ class HLSDownload {
             $percent = round((100 * $download) / $total);
             if ($percent < 0) $percent = 0;
             if ($percent > 100) $percent = 100;
-            if (!is_null($last) and round(microtime(true) - $last, 1) < 2.5 and $percent != 100) return;
+            if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent != 100) return;
             $last = microtime(true);
             $info = curl_getinfo($ch);
             $url = $info['url'];
@@ -82,7 +82,7 @@ class HLSDownload {
         if (!$ts_name) $ts_name = 'chunk.ts';
         $curl_settings = [
             CURLOPT_USERAGENT => $settings['ua'],
-            CURLOPT_TIMEOUT => 10,
+            CURLOPT_TIMEOUT => 120,
             'checker' => [200, 201, 202],
         ];
         // if ($settings['headers'] and is_array($settings['headers'])) {

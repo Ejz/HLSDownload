@@ -18,6 +18,9 @@ cd build/
 rm -f vendor/ejz/functions/fonts/*
 > vendor/ejz/functions/ua.list.txt
 
+if [ "$1" ]; then
+    sed -i -e "s/__VERSION__/${1}/" bin/hlsdownload.php
+fi
 phar-composer build .
 chmod a+x "$bin"
 mv "$bin" ..
