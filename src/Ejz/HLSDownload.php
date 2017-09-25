@@ -16,8 +16,13 @@ class HLSDownload {
             'filters' => [],
             'no_ts' => false,
             'level' => 0,
-            'progress_extra_n' => false,
+            'terminal_width' => null,
         ];
+        if (empty($settings['terminal_width'])) {
+            $def = 80;
+            $settings['terminal_width'] = getenv('TERM') ? intval(`tput cols`) : $def;
+            if (!$settings['terminal_width']) $settings['terminal_width'] = $def;
+        }
         $dir = & $settings['dir'];
         if (!is_dir($dir)) @ mkdir($dir, $mode = 0755, $recursive = true);
         if (!is_dir($dir) or !is_writable($dir))
@@ -28,33 +33,41 @@ class HLSDownload {
         $dir = rtrim($dir, '/');
         return self::backend($link, $settings);
     }
-    private static function getProgressCallback($progress_extra_n) {
-        $progress = function ($url, $percent, $total) use ($progress_extra_n) {
-            $n = $progress_extra_n ? "\n" : '';
-            $n100 = $percent == 100 ? "\n" : "";
+    private static function getProgressCallback($settings) {
+        $progress = function ($url, $percent, $total, $first) use ($settings) {
             $total = round($total / 1024);
             if ($total >= 1000) {
                 $total = round($total / 1000, 1);
                 $total = $total == intval($total) ? $total . '.0' : $total;
                 $total .= 'M';
             } else $total .= 'K';
-            // {$url} ~ 
-            fwrite(STDOUT, "\r{$percent}% ({$total})" . $n . $n100);
+            if ($first) fwrite(STDOUT, "\n");
+            $trunc = function ($s, $width) {
+                if (strlen($s) <= $width) return $s;
+                $replacer = '..';
+                $width -= strlen($replacer);
+                return $replacer . mb_substr($s, - $width);
+            };
+            $width = $settings['terminal_width'];
+            $msg = "{$url} ~ {$percent}% ({$total})";
+            fwrite(STDOUT, "\033[s\033[1A\033[2K\r" . $trunc($msg, $width) . "\033[u");
         };
         return function ($ch, $total, $download) use ($progress) {
             static $last = null;
             static $done = false;
+            static $first = true;
             if (!$total) return;
             $percent = round((100 * $download) / $total);
             if ($percent < 0) $percent = 0;
             if ($percent > 100) $percent = 100;
-            if (!is_null($last) and round(microtime(true) - $last, 1) < 3.5 and $percent != 100) return;
+            if (!is_null($last) and round(microtime(true) - $last, 1) < 0.5 and $percent != 100) return;
             $last = microtime(true);
             $info = curl_getinfo($ch);
             $url = $info['url'];
             if ($done) return;
             if ($percent == 100) $done = true;
-            $progress($url, $percent, $total);
+            $progress($url, $percent, $total, $first);
+            $first = false;
         };
     }
     private static function backend($link, $settings) {
@@ -77,10 +90,6 @@ class HLSDownload {
         // }
         $progress_default = (defined('STDOUT') and posix_isatty(STDOUT));
         $progress = (!isset($settings['progress']) or is_null($settings['progress'])) ? $progress_default : (bool)($settings['progress']);
-        if ($progress) {
-            $curl_settings[CURLOPT_NOPROGRESS] = false;
-            $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressCallback($settings['progress_extra_n']);
-        }
         if (preg_match('~^(\d+)\s*(k|m|g)$~i', @ $settings['limit_rate'], $match)) {
             if (defined('CURLOPT_MAX_RECV_SPEED_LARGE')) {
                 $m = array('k' => pow(2, 10), 'm' => pow(2, 20), 'g' => pow(2, 30));
@@ -89,11 +98,15 @@ class HLSDownload {
         }
         $cache = $dir . $settings['cache'];
         @ mkdir($cache, $mode = 0755, $recursive = true);
-        $getter = function ($link) use ($curl_settings, $cache) {
+        $getter = function ($link) use ($curl_settings, $cache, $progress, $settings) {
             if (!host($link) and is_file($link))
                 return file_get_contents($link);
             $file = $cache . '/' . md5($link);
             if (!is_file($file)) {
+                if ($progress) {
+                    $curl_settings[CURLOPT_NOPROGRESS] = false;
+                    $curl_settings[CURLOPT_PROGRESSFUNCTION] = self::getProgressCallback($settings);
+                }
                 $content = curl($link, $curl_settings);
                 if (!$content) return _warn(__CLASS__ . ": Error while getting {$link}");
                 file_put_contents($file, $content);
@@ -216,8 +229,8 @@ class HLSDownload {
             if ($extinf) {
                 $line = realurl($line, $link);
                 $ts_name = sprintf("chunk%05s.ts", $ts_count);
-                if ($settings['no_ts'] and is_file($link)) {
-                    if (!is_file($line)) _warn(__CLASS__ . ": File is not found {$line}");
+                if ($settings['no_ts'] and is_file($link) and !host($line)) {
+                    if (!is_file($line)) _warn(__CLASS__ . ": File is not found: {$line}");
                     else copy($line, $dir . '/' . $ts_name);
                 } elseif ($settings['no_ts']) {
                     $ts_name = $line;

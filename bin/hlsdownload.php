@@ -50,7 +50,7 @@ if (getenv("TERM")) {
 $def = (defined('STDOUT') and posix_isatty(STDOUT) and !empty($width) and !empty($height));
 if (empty($width)) $width = 80;
 if (empty($height)) $height = 25;
-$height -= 1; // one line is kept for empty line
+// $height -= 1; // one line is kept for empty line
 $keys = array_keys($opts);
 $ep = !empty($opts['progress']);
 $dp = !empty($opts['no-progress']);
@@ -61,10 +61,12 @@ $progress = (
 );
 // $h = $height + 1;
 // if ($progress) echo "Terminal size: {$width}x{$h}\n";
+$prefix_format = "(#%s) ";
 $settings['progress'] = $progress;
 $settings['progress_extra_n'] = isset($opts['progress-extra-n']);
 $res = HLSDownload::go($opts[1], [
     'no_ts' => (!isset($opts['thread']) or isset($opts['no-ts'])),
+    'terminal_width' => (isset($opts['thread']) ? $width - strlen($prefix_format) : $width),
 ] + $settings);
 if (isset($opts['thread']) or isset($opts['no-ts'])) exit($res ? 0 : 1);
 $dir = $settings['dir'];
@@ -88,38 +90,50 @@ function normalize_threads_positions(& $threads, $base = 0) {
 }
 
 $depth = 0;
-$echoCallback = function ($thread) use (& $threads, & $depth, $height, $width, $progress) {
-    $prefix_format = "(#%s)";
-    return function ($chunk, $exit = false) use ($thread, & $threads, $prefix_format, & $depth, $height, $width, $progress) {
+$echoCallback = function ($thread) use (
+        & $threads, & $depth, $height, $width, $prefix_format
+    ) {
+    return function ($chunk, $exit = false) use (
+        $thread, & $threads, $prefix_format, & $depth, $height, $width, $prefix_format
+    ) {
         $echo_prefix = sprintf($prefix_format, $thread);
         $buffer = & $threads[$thread]['buffer'];
         $buffer .= $chunk;
-        $trunc = function ($s) use ($width) {
-            return str_truncate($s, $width, $center = false, $replacer = '..');
-        };
         // echo mt_rand() . "\n";
         // $depth += 1;
-        // normalize_threads_positions($threads, $depth - $height + 0);
-        $lines = preg_split('/(\\n+)/', $buffer, -1, PREG_SPLIT_DELIM_CAPTURE);
+        // normalize_threads_positions($threads, $depth - $height + 1);
+        $lines = preg_split('/(\n|\e\[u)/', $buffer, -1, PREG_SPLIT_DELIM_CAPTURE);
         for ($i = 0; $i < count($lines); $i++) {
             $line = $lines[$i];
             $prev = (isset($lines[$i - 1]) ? $lines[$i - 1] : '');
-            if (!$line or $line[0] != "\n") continue;
-            if ($prev and $prev[0] === "\r") {
+            if (!$line) continue;
+            if ($line[0] == "\e") {
                 $pos = isset($threads[$thread]['pos']) ? $threads[$thread]['pos'] : $depth;
                 if (!isset($threads[$thread]['pos'])) {
-                    echo "\n";
-                    $depth += 1;
                     $threads[$thread]['pos'] = $pos;
-                    normalize_threads_positions($threads, $depth - $height + 0);
+                    normalize_threads_positions($threads, $depth - $height + 1);
                 }
-                $msg = $trunc($echo_prefix . substr($prev, 1));
-                $threads[$thread]['status'] = "\033[s\033[%moveup%A\033[2K\r" . $msg . "\033[u";
-                $threads[$thread]['end'] = (strlen($line) > 1);
-            } else {
-                echo $trunc($echo_prefix . $prev) . "\n";
-                $depth += 1;
-                normalize_threads_positions($threads, $depth - $height + 0);
+                preg_match('!\r(\S+) ~ (\S+) \(!', $prev, $match);
+                $url = $match[1];
+                $percent = $match[2];
+                $end = (intval($percent) == 100);
+                $msg = str_replace("\033[1A", "\033[%moveup%A", $prev . $line);
+                if (!isset($threads[$thread]['url']) or $url == $threads[$thread]['url']) {
+                    $_ = ($end ? '' : "\033[7m") . $echo_prefix . ($end ? '' : "\033[0m");
+                    $msg = str_replace("\r", "\r" . $_, $msg);
+                } else {
+                    $end = true;
+                    $msg = str_replace("\r", "\r" . $echo_prefix, $msg);
+                    $msg = str_replace(" {$percent} (", " ERR (", $msg);
+                }
+                $threads[$thread]['msg'] = $msg;
+                $threads[$thread]['end'] = $end;
+                $threads[$thread]['url'] = $url;
+            }
+            if ($line[0] == "\n") {
+                echo $echo_prefix . ' ' . $prev . "\n";
+                $depth += 1 + intval(strlen($echo_prefix . ' ' . $prev) / $width);
+                normalize_threads_positions($threads, $depth - $height + 1);
             }
         }
         if (count($lines) > 1) {
@@ -127,15 +141,16 @@ $echoCallback = function ($thread) use (& $threads, & $depth, $height, $width, $
             $buffer = substr($buffer, $len);
         }
         if ($exit) {
-            echo $trunc($buffer ? ($echo_prefix . $buffer) : '');
+            echo ($buffer ? ($echo_prefix . ' ' . $buffer) : '');
             $buffer = '';
         }
         foreach ($threads as & $t) {
-            if (!isset($t['status'])) continue;
-            echo str_replace('%moveup%', $depth - $t['pos'], $t['status']);
+            if (!isset($t['msg'])) continue;
+            echo str_replace('%moveup%', $depth - $t['pos'], $t['msg']);
             if ($t['end']) {
                 unset($t['pos']);
-                unset($t['status']);
+                unset($t['msg']);
+                unset($t['url']);
             }
         }
     };
