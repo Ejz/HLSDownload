@@ -89,6 +89,12 @@ function normalize_threads_positions(& $threads, $base = 0) {
     $rec($pos, $base);
 }
 
+function tty_make_bold($string, $start = '(', $end = ')') {
+    $s = preg_quote($start, '~');
+    $e = preg_quote($end, '~');
+    return preg_replace("~({$s}.*?{$e})~", "\033[7m$1\033[0m", $string);
+}
+
 $depth = 0;
 $echoCallback = function ($thread) use (
         & $threads, & $depth, $height, $width, $prefix_format
@@ -103,36 +109,35 @@ $echoCallback = function ($thread) use (
         // $depth += 1;
         // normalize_threads_positions($threads, $depth - $height + 1);
         $lines = preg_split('/(\n|\e\[u)/', $buffer, -1, PREG_SPLIT_DELIM_CAPTURE);
+        $lines['thread'] = $thread . '';
+        file_put_contents('/tmp/lines', print_r(array_map('json_encode', $lines), 1), FILE_APPEND);
+        unset($lines['thread']);
         for ($i = 0; $i < count($lines); $i++) {
             $line = $lines[$i];
             $prev = (isset($lines[$i - 1]) ? $lines[$i - 1] : '');
             if (!$line) continue;
-            if ($line[0] == "\e") {
-                $pos = isset($threads[$thread]['pos']) ? $threads[$thread]['pos'] : $depth;
-                if (!isset($threads[$thread]['pos'])) {
-                    $threads[$thread]['pos'] = $pos;
-                    normalize_threads_positions($threads, $depth - $height + 1);
-                }
+            if ($line == "\e[u") {
+                $pos = isset($threads[$thread]['pos']) ? $threads[$thread]['pos'] : $depth - 1;
+                if (!isset($threads[$thread]['pos'])) $threads[$thread]['pos'] = $pos;
                 preg_match('!\r(\S+) ~ (\S+) \(!', $prev, $match);
                 $url = $match[1];
                 $percent = $match[2];
                 $end = (intval($percent) == 100);
                 $msg = str_replace("\033[1A", "\033[%moveup%A", $prev . $line);
-                if (!isset($threads[$thread]['url']) or $url == $threads[$thread]['url']) {
-                    $_ = ($end ? '' : "\033[7m") . $echo_prefix . ($end ? '' : "\033[0m");
-                    $msg = str_replace("\r", "\r" . $_, $msg);
-                } else {
+                $_ = $end ? $echo_prefix : tty_make_bold($echo_prefix);
+                $msg = str_replace("\r", "\r" . $_, $msg);
+                if (isset($threads[$thread]['url']) and $url != $threads[$thread]['url']) {
                     $end = true;
-                    $msg = str_replace("\r", "\r" . $echo_prefix, $msg);
-                    $msg = str_replace(" {$percent} (", " ERR (", $msg);
+                    $threads[$thread]['pos'] = $threads[$thread]['newpos'] = $depth - 1;
                 }
                 $threads[$thread]['msg'] = $msg;
                 $threads[$thread]['end'] = $end;
                 $threads[$thread]['url'] = $url;
             }
             if ($line[0] == "\n") {
-                echo $echo_prefix . ' ' . $prev . "\n";
-                $depth += 1 + intval(strlen($echo_prefix . ' ' . $prev) / $width);
+                echo $echo_prefix . $prev . "\n";
+                file_put_contents('/tmp/lines', $echo_prefix . $prev . "\n", FILE_APPEND);
+                $depth += 1 + intval(strlen($echo_prefix . $prev) / $width);
                 normalize_threads_positions($threads, $depth - $height + 1);
             }
         }
@@ -141,16 +146,23 @@ $echoCallback = function ($thread) use (
             $buffer = substr($buffer, $len);
         }
         if ($exit) {
-            echo ($buffer ? ($echo_prefix . ' ' . $buffer) : '');
+            $_ = ($buffer ? ($echo_prefix . ' ' . $buffer) : '');
+            echo $_;
+            $depth += intval(strlen($_) / $width);
             $buffer = '';
         }
         foreach ($threads as & $t) {
             if (!isset($t['msg'])) continue;
             echo str_replace('%moveup%', $depth - $t['pos'], $t['msg']);
+            file_put_contents('/tmp/lines', str_replace('%moveup%', $depth - $t['pos'], $t['msg']) . "\n", FILE_APPEND);
             if ($t['end']) {
                 unset($t['pos']);
                 unset($t['msg']);
                 unset($t['url']);
+            }
+            if (isset($t['newpos'])) {
+                $t['pos'] = $t['newpos'];
+                unset($t['newpos']);
             }
         }
     };
