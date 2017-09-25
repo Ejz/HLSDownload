@@ -10,7 +10,7 @@ if ./gitci.sh --is-release; then
     next=`./gitci.sh --next-tag`
     ./deploy.sh -D -e ./phar.sh "$next" || exit 1
     cp build/hlsdownload.phar build/hlsdownload-"$next".phar
-    ./gitci.sh "build/hlsdownload.phar build/hlsdownload-{$next}.phar" "Release [skip ci]"
+    ./gitci.sh "build/hlsdownload.phar build/hlsdownload-${next}.phar" "Release [skip ci]"
 else
     ./deploy.sh -D -e ./phar.sh || exit 1
     ./gitci.sh
