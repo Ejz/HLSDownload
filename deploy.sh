@@ -97,7 +97,7 @@ if test "$test"; then
 elif test "$login"; then
     exec=($EXEC_T "bash")
 elif test "${#exec[@]}" -gt 0; then
-    exec=($EXEC_T "${exec[@]}")
+    exec=($EXEC_T $exec[@])
 fi
 
 if [ "${#exec[@]}" -gt 0 ] && $sudo docker ps --filter "name=^/${DOCKER_NAME_PREFIX}nginx" | grep -q "$DOCKER_NAME_PREFIX"nginx; then
