@@ -38,7 +38,8 @@ class HLSDownload {
                 $total = $total == intval($total) ? $total . '.0' : $total;
                 $total .= 'M';
             } else $total .= 'K';
-            fwrite(STDOUT, "\r{$url} ~ {$percent}% ({$total})" . $n . $n100);
+            // {$url} ~ 
+            fwrite(STDOUT, "\r{$percent}% ({$total})" . $n . $n100);
         };
         return function ($ch, $total, $download) use ($progress) {
             static $last = null;
