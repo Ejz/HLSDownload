@@ -45,7 +45,7 @@ $ hlsdownload -d /tmp --limit-rate 100k "http://content.jwplatform.com/manifests
 
 ### Demo
 
-
+![HLSDownload Demo](demo.gif "HLSDownload Demo")
 
 ### Authors
 
